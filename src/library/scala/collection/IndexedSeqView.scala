@@ -1,6 +1,8 @@
 package scala
 package collection
 
+import scala.language.higherKinds
+
 /** View defined in terms of indexing a range */
 trait IndexedSeqView[+A] extends IndexedSeqOps[A, View, View[A]] with SeqView[A] { self =>
 
@@ -40,6 +42,9 @@ object IndexedSeqView {
   def single[A](elem: A): IndexedSeqView[A] = new Single(elem)
 
   def id[A](underlying: SomeIndexedSeqOps[A]): IndexedSeqView[A] = new Id(underlying)
+
+  def previouslyEvaluated[A](underlying: IndexedSeq[A]): IndexedSeqView[A] =
+    if (underlying.isEmpty) Empty else new PreviouslyEvaluated(underlying)
 
   def take[A](underlying: SomeIndexedSeqOps[A], n: Int): IndexedSeqView[A] = slice(underlying, 0, n)
 
