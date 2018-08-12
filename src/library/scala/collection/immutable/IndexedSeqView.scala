@@ -206,13 +206,19 @@ object IndexedSeqView {
     suffix: IndexedSeqView[B],
     isReversed: Boolean,
     mapFunctions: IndexedSeq[Any => Any]) extends AbstractIndexedSeqView[B] {
+    /** The actual low underlying offset */
     protected val lo = from max 0
+    /** The actual high underlying offset */
     protected val hi = (until max 0) min underlying.length
 
+    /** Length of prefix */
     protected val prefixLen = prefix.length
+    /** Length of underlying */
     protected val len = (hi - lo) max 0
+    /** Length of suffix */
     protected val suffixLen = suffix.length
-    override val length = prefixLen + len + suffixLen
+
+    override def length = prefixLen + len + suffixLen
 
     @throws[IndexOutOfBoundsException]
     def apply(i: Int): B = {
@@ -316,68 +322,23 @@ object IndexedSeqView {
         if (_from >= suffixLen) {
           if (_from >= suffixLen + len) {
             if (_from >= length) {
-              //   pre                              underlying                          post
-              // [*******************************][     *********************        ][*******************************]
-              //                                  |----|lo
-              //                                  |--------------------------|hi
-              // |_from------------------------------------------------------          -------------------------------|
-              // should never happen
               Empty
             } else {
-              //   pre                              underlying                          post
-              // [*******************************][     *********************        ][*******************************]
-              //                                  |----|lo
-              //                                  |--------------------------|hi
-              //                      _from|---------------------------------          -------------------------------|
-              //         _until|---------------------------------------------          -------------------------------|
               prefix.reverse.slice(_from - suffixLen - len, _until - suffixLen - len)
             }
           } else {
             if (_until <= suffixLen + len) {
-              //   pre                              underlying                          post
-              // [*******************************][     *********************        ][*******************************]
-              //                                  |----|lo
-              //                                  |--------------------------|hi
-              //                                                    _from|---          -------------------------------|
-              //                                           _until|-----------          -------------------------------|
               new Slice(Empty, underlying, hi - (_until - suffixLen), hi - (_from - suffixLen), Empty, isReversed, mapFunctions)
             } else {
-
-              //   pre                              underlying                          post
-              // [*******************************][     *********************        ][*******************************]
-              //                                  |----|lo
-              //                                  |--------------------------|hi
-              //                                                    _from|---          -------------------------------|
-              //                       _until|---       ---------------------          -------------------------------|
-
-
               new Slice(prefix.takeRight(_until - (suffixLen + len)), underlying, lo, hi - (from - suffixLen), Empty, isReversed, mapFunctions)
             }
           }
         } else {
           if (_until <= suffixLen) {
-            //   pre                              underlying                          post
-            // [*******************************][     *********************        ][*******************************]
-            //                                  |----|lo
-            //                                  |--------------------------|hi
-            //                                                                                         _from|-------|
-            //                                                                           _until|--------------------|
             suffix.reverse.slice(_from, _until)
           } else if (_until <= suffixLen + len){
-            //   pre                              underlying                          post
-            // [*******************************][     *********************        ][*******************************]
-            //                                  |----|lo
-            //                                  |--------------------------|hi
-            //                                                                                         _from|-------|
-            //                                                  _until|----          -------------------------------|
             new Slice(Empty, underlying, hi - (_until - suffixLen), hi, suffix.dropRight(_from), isReversed, mapFunctions)
           } else {
-            //   pre                              underlying                          post
-            // [*******************************][     *********************        ][*******************************]
-            //                                  |----|lo
-            //                                  |--------------------------|hi
-            //                                                                                         _from|-------|
-            //                 _until|----------      ---------------------          -------------------------------|
             new Slice(prefix.takeRight(_until - suffixLen - len), underlying, lo, hi, suffix.take(suffixLen - _from), isReversed, mapFunctions)
           }
         }
@@ -385,66 +346,23 @@ object IndexedSeqView {
         if (_from >= prefixLen) {
           if (_from >= prefixLen + len) {
             if (_from >= length) {
-              //   pre                              underlying                          post
-              // [*******************************][     *********************        ][*******************************]
-              //                                  |----|lo
-              //                                  |--------------------------|hi
-              // |--------------------------------      ---------------------          -------------------------------|_from
-              // |--------------------------------      ---------------------          ---------------------------------------|_until
-              // Should never happen
               Empty
             } else {
-              //   pre                              underlying                          post
-              // [*******************************][     *********************        ][*******************************]
-              //                                  |----|lo
-              //                                  |--------------------------|hi
-              // |--------------------------------      ---------------------          -----|_from
-              // |--------------------------------      ---------------------          ---------------------|_until
               suffix.slice(_from - prefixLen - len, _until - prefixLen - len)
             }
           } else {
             if (_until <= prefixLen + len) {
-              //   pre                              underlying                          post
-              // [*******************************][     *********************        ][*******************************]
-              //                                  |----|lo
-              //                                  |--------------------------|hi
-              // |---------------------------------     -----|_from
-              // |---------------------------------     ---------------|_until
               new Slice(Empty, underlying, _from - prefixLen, _until - prefixLen, Empty, isReversed, mapFunctions)
             } else {
-              //   pre                              underlying                          post
-              // [*******************************][     *********************        ][*******************************]
-              //                                  |----|lo
-              //                                  |--------------------------|hi
-              // |--------------------------------      -----|_from
-              // |--------------------------------      ---------------------          -----------|_until
               new Slice(Empty, underlying, lo + _from - prefixLen , hi, suffix.take(_until - prefixLen - len), isReversed, mapFunctions)
             }
           }
         } else {
           if (_until <= prefixLen) {
-            //   pre                              underlying                          post
-            // [*******************************][     *********************        ][*******************************]
-            //                                  |----|lo
-            //                                  |--------------------------|hi
-            // |--|_from
-            // |-----------------------|_until
             prefix.slice(_from, _until)
           } else if (_until <= prefixLen + len){
-            //   pre                              underlying                          post
-            // [*******************************][     *********************        ][*******************************]
-            //                                  |----|lo
-            //                                  |--------------------------|hi
-            // |--|_from
-            // |-------------------------------       --------|_until
             new Slice(prefix.drop(_from), underlying, lo, lo + _until - prefixLen, Empty, isReversed, mapFunctions)
           } else {
-            //   pre                              underlying                          post
-            // [*******************************][     *********************        ][*******************************]
-            //                                  |----|lo
-            //                                  |--------------------------|hi
-            // |--|_from
-            // |-------------------------------       ---------------------          -----------|_until
             new Slice(prefix.drop(_from), underlying, lo, hi, suffix.take(_until - prefixLen - len), isReversed, mapFunctions)
           }
         }

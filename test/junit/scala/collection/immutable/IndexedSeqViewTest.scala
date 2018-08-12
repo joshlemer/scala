@@ -7,6 +7,7 @@ import org.junit.runners.JUnit4
 
 import scala.annotation.tailrec
 import scala.collection.View
+import scala.collection.immutable.IndexedSeqView.Slice
 import scala.tools.testing.AssertUtil.assertThrows
 
 @RunWith(classOf[JUnit4])
@@ -55,12 +56,16 @@ class IndexedSeqViewSliceTest {
       suffixLength <- 0 to MaxSuffixLength
     } yield {
       val indexedSeq = 0 until (prefixLength + underlyingLength + suffixLength)
-      val slice =
-        (0 until suffixLength).foldLeft(
-          (0 until prefixLength).reverse.foldLeft(
-            (prefixLength until (prefixLength + underlyingLength)).view
-          )(_ prepended _)
-        )((acc, elem) => acc.appended(elem + prefixLength + underlyingLength))
+
+      val slice = new Slice(
+        prefix = IndexedSeqView.previouslyEvaluated(0 until prefixLength),
+        underlying = prefixLength until (prefixLength + underlyingLength),
+        from = 0,
+        until = underlyingLength,
+        suffix = IndexedSeqView.previouslyEvaluated((prefixLength + underlyingLength) until (prefixLength + underlyingLength + suffixLength)),
+        isReversed = false,
+        mapFunctions = IndexedSeq.empty
+      )
 
       (slice, indexedSeq.toVector, (prefixLength, underlyingLength, suffixLength))
     }
