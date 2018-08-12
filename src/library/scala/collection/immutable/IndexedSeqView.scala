@@ -22,7 +22,9 @@ trait IndexedSeqView[+A] extends collection.IndexedSeqView[A] with IndexedSeqOps
 object IndexedSeqView {
 
   /** An `IndexedSeqOps` whose collection type and collection type constructor are unknown */
-  type SomeIndexedSeqOps[A] = /* immutable. */ IndexedSeqOps[A, AnyConstr, _]
+  type SomeIndexedSeqOps[A] = IndexedSeqOps[A, AnyConstr, _]
+
+  def empty[A]: IndexedSeqView[A] = Empty
 
   def single[A](elem: A): IndexedSeqView[A] = new Single(elem)
 
@@ -74,7 +76,8 @@ object IndexedSeqView {
   }
 
   @SerialVersionUID(3L)
-  case object Empty extends AbstractIndexedSeqView[Nothing] {
+  private[scala] case object Empty extends AbstractIndexedSeqView[Nothing] {
+    override def iterator = Iterator.empty
     override def apply(i: Int): Nothing = throw new IndexOutOfBoundsException(i.toString)
     override def length = 0
     override def prepended[B >: Nothing](elem: B) = single(elem)
