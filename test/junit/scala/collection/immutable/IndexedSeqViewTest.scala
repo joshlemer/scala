@@ -1,4 +1,4 @@
-package scala.collection
+package scala.collection.immutable
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -6,7 +6,7 @@ import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
 
 import scala.annotation.tailrec
-import scala.collection.immutable.Vector
+import scala.collection.View
 import scala.tools.testing.AssertUtil.assertThrows
 
 @RunWith(classOf[JUnit4])

@@ -29,26 +29,26 @@ trait IndexedSeqOps[+A, +CC[_], +C] extends Any with SeqOps[A, CC, C] { self =>
       } else Iterator.empty.next()
   }
 
-  override def view: IndexedSeqView[A] = IndexedSeqView.id(this)
+  override def view: IndexedSeqView[A] = new IndexedSeqView.Id[A](this)
 
-  override protected def reversed: Iterable[A] = IndexedSeqView.reverse(this)
+  override protected def reversed: Iterable[A] = new IndexedSeqView.Reverse(this)
 
   // Override transformation operations to use more efficient views than the default ones
-  override def prepended[B >: A](elem: B): CC[B] = iterableFactory.from(IndexedSeqView.prepended(this, elem))
+  override def prepended[B >: A](elem: B): CC[B] = iterableFactory.from(new IndexedSeqView.Prepended(elem, this))
 
-  override def take(n: Int): C = fromSpecificIterable(IndexedSeqView.take(this, n))
+  override def take(n: Int): C = fromSpecificIterable(new IndexedSeqView.Take(this, n))
 
-  override def takeRight(n: Int): C = fromSpecificIterable(IndexedSeqView.takeRight(this, n))
+  override def takeRight(n: Int): C = fromSpecificIterable(new IndexedSeqView.TakeRight(this, n))
 
-  override def drop(n: Int): C = fromSpecificIterable(IndexedSeqView.drop(this, n))
+  override def drop(n: Int): C = fromSpecificIterable(new IndexedSeqView.Drop(this, n))
 
-  override def dropRight(n: Int): C = fromSpecificIterable(IndexedSeqView.dropRight(this, n))
+  override def dropRight(n: Int): C = fromSpecificIterable(new IndexedSeqView.DropRight(this, n))
 
-  override def map[B](f: A => B): CC[B] = iterableFactory.from(IndexedSeqView.map(this, f))
+  override def map[B](f: A => B): CC[B] = iterableFactory.from(new IndexedSeqView.Map(this, f))
 
-  override def reverse: C = fromSpecificIterable(IndexedSeqView.reverse(this))
+  override def reverse: C = fromSpecificIterable(new IndexedSeqView.Reverse(this))
 
-  override def slice(from: Int, until: Int): C = fromSpecificIterable(IndexedSeqView.slice(this, from, until))
+  override def slice(from: Int, until: Int): C = fromSpecificIterable(new IndexedSeqView.Slice(this, from, until))
 
   override def last: A = apply(length - 1)
 
