@@ -43,7 +43,7 @@ class PriorityQueueTest {
     val objectInputStream = new ObjectInputStream(new ByteArrayInputStream(bytes))
     val deserializedPriorityQueue = objectInputStream.readObject().asInstanceOf[PriorityQueue[Int]]
     //correct sequencing is also tested here:
-    assert(deserializedPriorityQueue.dequeueAll == elements.sorted.reverse)
+    assert(deserializedPriorityQueue.dequeueAll() == elements.sorted.reverse)
   }
   @Test
   def lastOfEmptyThrowsException(): Unit = {

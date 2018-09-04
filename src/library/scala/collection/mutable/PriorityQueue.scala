@@ -219,7 +219,7 @@ sealed class PriorityQueue[A](implicit val ord: Ordering[A])
     } else
       throw new NoSuchElementException("no element to remove from heap")
 
-  def dequeueAll[A1 >: A]: immutable.Seq[A1] = {
+  def dequeueAll[A1 >: A](): immutable.Seq[A1] = {
     val b = ArrayBuilder.make[Any]
     b.sizeHint(size)
     while (nonEmpty) {

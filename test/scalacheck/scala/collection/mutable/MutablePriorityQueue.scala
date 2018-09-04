@@ -24,19 +24,19 @@ object MutablePriorityQueueTest extends Properties("PriorityQueue") {
     for (x <- list) builder += x
     val pq = builder.result()
     checkInvariant(pq) &&
-    pq.dequeueAll == list.sorted.reverse
+    pq.dequeueAll() == list.sorted.reverse
   }
 
   property("to[PriorityQueue]") = forAll { list: List[E] =>
     val pq = list.to(PriorityQueue)
     checkInvariant(pq) &&
-    pq.dequeueAll == list.sorted.reverse
+    pq.dequeueAll() == list.sorted.reverse
   }
 
   property("apply (in companion)") = forAll { list: List[E] =>
     val pq = PriorityQueue.apply(list: _*)
     checkInvariant(pq) &&
-    pq.dequeueAll == list.sorted.reverse
+    pq.dequeueAll() == list.sorted.reverse
   }
 
   property("size, isEmpty") = forAll { list: List[E] =>
@@ -48,39 +48,39 @@ object MutablePriorityQueueTest extends Properties("PriorityQueue") {
     val pq = PriorityQueue(list: _*)
     pq += x
     checkInvariant(pq) &&
-    pq.dequeueAll == (x :: list).sorted.reverse
+    pq.dequeueAll() == (x :: list).sorted.reverse
   }
 
   property("++= on empty") = forAll { list: List[E] =>
     val pq = PriorityQueue.empty[E]
     pq ++= list
     checkInvariant(pq) &&
-    pq.dequeueAll == list.sorted.reverse
+    pq.dequeueAll() == list.sorted.reverse
   }
 
   property("++=") = forAll { (list1: List[E], list2: List[E]) =>
     val pq = PriorityQueue(list1: _*)
     pq ++= list2
     checkInvariant(pq) &&
-    pq.dequeueAll == (list1 ++ list2).sorted.reverse
+    pq.dequeueAll() == (list1 ++ list2).sorted.reverse
   }
 
   property("reverse") = forAll { list: List[E] =>
     val pq = PriorityQueue(list: _*).reverse
     checkInvariant(pq)(implicitly[Ordering[E]].reverse) &&
-    pq.dequeueAll == list.sorted
+    pq.dequeueAll() == list.sorted
   }
 
   property("reverse then ++=") = forAll { list: List[E] =>
     val pq = PriorityQueue.empty[E].reverse ++= list
     checkInvariant(pq)(implicitly[Ordering[E]].reverse) &&
-    pq.dequeueAll == list.sorted
+    pq.dequeueAll() == list.sorted
   }
 
   property("reverse then +=") = forAll { (x: E, list: List[E]) =>
     val pq = PriorityQueue(list: _*).reverse += x
     checkInvariant(pq)(implicitly[Ordering[E]].reverse) &&
-    pq.dequeueAll == (x +: list).sorted
+    pq.dequeueAll() == (x +: list).sorted
   }
 
   property("clone") = forAll { list: List[E] =>
@@ -88,7 +88,7 @@ object MutablePriorityQueueTest extends Properties("PriorityQueue") {
     val c = pq.clone()
     (pq ne c) &&
     checkInvariant(c) &&
-    c.dequeueAll == pq.dequeueAll
+    c.dequeueAll() == pq.dequeueAll()
   }
 
   property("dequeue") = forAll { list: List[E] =>
@@ -96,7 +96,7 @@ object MutablePriorityQueueTest extends Properties("PriorityQueue") {
       val pq = PriorityQueue(list: _*)
       val x = pq.dequeue()
       checkInvariant(pq) &&
-      x == list.max && pq.dequeueAll == list.sorted.reverse.tail
+      x == list.max && pq.dequeueAll() == list.sorted.reverse.tail
     }
   }
 
