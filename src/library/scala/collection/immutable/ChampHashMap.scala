@@ -599,8 +599,6 @@ private final class BitmapIndexedMapNode[K, +V](
         }
       }
 
-      val collidingNodeMap = nodeMap | bm.nodeMap
-
       val newDataMap = (dataMap | bm.dataMap) & ~migrateDataToNodeMap
 
       val newNodeMap = migrateDataToNodeMap | nodeMap | bm.nodeMap
@@ -716,43 +714,7 @@ private final class BitmapIndexedMapNode[K, +V](
         }
       }
 
-
-      // merge nodes
-//      {
-//        var idx = 0 // the conceptual, "un-compressed" index
-//        var compressedIdx = 0
-//        var leftIdx = 0
-//        val leftNodeArity = nodeArity
-//        var rightIdx = 0
-//        val rightNodeArity = bm.nodeArity
-//        while (leftIdx < leftNodeArity || rightIdx < rightNodeArity) {
-//          val bitpos = bitposFrom(idx)
-//          if ((bitpos & migrateDataToNodeMap) != 0) {
-//            val newNode = new BitmapIndexedMapNode(0, 0, Array(), Array(), 0)
-//              .updated(getKey(leftIdx), getValue(leftIdx), getHash(leftIdx), improve(getHash(leftIdx)), shift + BitPartitionSize)
-//              .updated(bm.getKey(rightIdx), bm.getValue(rightIdx), bm.getHash(rightIdx), improve(getHash(rightIdx)), shift + BitPartitionSize)
-//
-//            newContent(newContentLength - compressedIdx) = newNode
-//            compressedIdx += 1
-//          } else if((bitpos * leftDataWithRightNode)) {
-//            val newNode = new BitmapIndexedMapNode(0, 0, Array(), Array(), 0)
-//              .updated(getKey(leftIdx), getValue(leftIdx), getHash(leftIdx), improve(getHash(leftIdx)), shift + BitPartitionSize)
-//              .updated(bm.getKey(rightIdx), bm.getValue(rightIdx), bm.getHash(rightIdx), improve(getHash(rightIdx)), shift + BitPartitionSize)
-//
-//            newContent(newContentLength - compressedIdx) = newNode
-//            compressedIdx += 1
-//
-//          }
-//
-//          idx += 1
-//        }
-//
-//      }
-
       result
-
-
-
 
     case hc: HashCollisionMapNode[K, V1] =>
       ???
