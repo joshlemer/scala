@@ -64,7 +64,13 @@ final class VectorMap[K, +V] private[immutable] (
   def remove(key: K): VectorMap[K, V] = {
     underlying.get(key) match {
       case Some((index, _)) =>
-        new VectorMap(fields.patch(index, Nil, 1), underlying - key)
+        val finalUnderlying = (underlying - key).map{ case (k, (currentIndex,v)) =>
+          if (currentIndex > index)
+            (k, (currentIndex - 1, v))
+          else
+            (k, (currentIndex, v))
+        }
+        new VectorMap(fields.patch(index, Nil, 1), finalUnderlying)
       case _ =>
         this
     }
@@ -89,7 +95,7 @@ final class VectorMap[K, +V] private[immutable] (
 
   override def lastOption: Option[(K, V)] = {
     fields.lastOption match {
-      case Some(last) => Some(last, underlying(last)._2)
+      case Some(last) => Some((last, underlying(last)._2))
       case None => None
     }
   }

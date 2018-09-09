@@ -3549,19 +3549,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
                   case _ =>
                 }
 
-                /*
-                 * This is translating uses of List() into Nil.  This is less
-                 *  than ideal from a consistency standpoint, but it shouldn't be
-                 *  altered without due caution.
-                 *  ... this also causes bootstrapping cycles if List_apply is
-                 *  forced during kind-arity checking, so it is guarded by additional
-                 *  tests to ensure we're sufficiently far along.
-                 */
-                def isSelectionFromListModule(tree: Tree) = tree match {
-                  case treeInfo.Applied(core @ Select(qual, _), _, _) => treeInfo.isQualifierSafeToElide(qual) && qual.symbol == ListModule
-                  case _ => false
-                }
-                if (args.isEmpty && canTranslateEmptyListToNil && fun.symbol.isInitialized && ListModule.hasCompleteInfo && (fun.symbol == currentRun.runDefinitions.List_apply && isSelectionFromListModule(fun)))
+                if (args.isEmpty && canTranslateEmptyListToNil && fun.symbol.isInitialized && currentRun.runDefinitions.isListApply(fun))
                   atPos(tree.pos)(gen.mkNil setType restpe)
                 else
                   constfold(treeCopy.Apply(tree, fun, args2) setType ifPatternSkipFormals(restpe) setPos pos2)
@@ -5804,11 +5792,11 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       assert(context.owner.isMacro, context.owner)
       assert(ddef.symbol.isMacro, ddef.symbol)
 
+      // macro defs are typechecked in `methodSig` (by calling this method) in order to establish their link to macro implementation asap
+      // if a macro def doesn't have explicitly specified return type, this method will be called again by `assignTypeToTree`
+      // here we guard against this case
       val rhs1 =
         if (transformed contains ddef.rhs) {
-          // macro defs are typechecked in `methodSig` (by calling this method) in order to establish their link to macro implementation asap
-          // if a macro def doesn't have explicitly specified return type, this method will be called again by `assignTypeToTree`
-          // here we guard against this case
           transformed(ddef.rhs)
         } else {
           val rhs1 = typedMacroBody(this, ddef)
@@ -5824,17 +5812,9 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           ddef.symbol.setFlag(IS_ERROR)
           context.error(ddef.pos, commonMessage)
         }
-        def reportWarning(inferredType: Type) = {
-          val explanation = s"inference of $inferredType from macro impl's c.Expr[$inferredType] is deprecated and is going to stop working in 2.12"
-          context.deprecationWarning(ddef.pos, ddef.symbol, s"$commonMessage ($explanation)", "2.12.0")
-        }
-        computeMacroDefTypeFromMacroImplRef(ddef, rhs1) match {
-          case ErrorType => ErrorType
-          case NothingTpe => NothingTpe
-          case NoType => reportFailure(); AnyTpe
-          case tpe => reportWarning(tpe); tpe
-        }
-      } else AnyTpe
+        reportFailure()
+      }
+      AnyTpe
     }
 
     @inline final def transformedOr(tree: Tree, op: => Tree): Tree = lookupTransformed(tree) match {

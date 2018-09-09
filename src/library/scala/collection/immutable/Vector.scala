@@ -176,7 +176,7 @@ final class Vector[+A] private[immutable] (private[collection] val startIndex: I
   // appendAll (suboptimal but avoids worst performance gotchas)
   override def appendedAll[B >: A](suffix: collection.IterableOnce[B]): Vector[B] = {
     import Vector.{Log2ConcatFaster, TinyAppendFaster}
-    if (suffix.isEmpty) this
+    if (suffix.iterator.isEmpty) this
     else {
       suffix match {
         case suffix: collection.Iterable[B] =>
@@ -202,20 +202,25 @@ final class Vector[+A] private[immutable] (private[collection] val startIndex: I
     // Implementation similar to `appendAll`: when of the collections to concatenate (either `this` or `prefix`)
     // has a small number of elements compared to the other, then we add them using `:+` or `+:` in a loop
     import Vector.{Log2ConcatFaster, TinyAppendFaster}
-    if (prefix.isEmpty) this
+    if (prefix.iterator.isEmpty) this
     else {
-      prefix.size match {
-        case n if n <= TinyAppendFaster || n < (this.size >>> Log2ConcatFaster) =>
-          var v: Vector[B] = this
-          val it = prefix.toIndexedSeq.reverseIterator
-          while (it.hasNext) v = it.next() +: v
-          v
-        case n if this.size < (n >>> Log2ConcatFaster) && prefix.isInstanceOf[Vector[_]] =>
-          var v = prefix.asInstanceOf[Vector[B]]
-          val it = this.iterator
-          while (it.hasNext) v = v :+ it.next()
-          v
-        case _ => super.prependedAll(prefix)
+      prefix match {
+        case prefix: collection.Iterable[B] =>
+          prefix.size match {
+            case n if n <= TinyAppendFaster || n < (this.size >>> Log2ConcatFaster) =>
+              var v: Vector[B] = this
+              val it = prefix.toIndexedSeq.reverseIterator
+              while (it.hasNext) v = it.next() +: v
+              v
+            case n if this.size < (n >>> Log2ConcatFaster) && prefix.isInstanceOf[Vector[_]] =>
+              var v = prefix.asInstanceOf[Vector[B]]
+              val it = this.iterator
+              while (it.hasNext) v = v :+ it.next()
+              v
+            case _ => super.prependedAll(prefix)
+          }
+        case _ =>
+          super.prependedAll(prefix)
       }
     }
   }
