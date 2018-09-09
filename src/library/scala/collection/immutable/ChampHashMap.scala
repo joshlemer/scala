@@ -821,7 +821,7 @@ object HashMap extends MapFactory[HashMap] {
 }
 
 
-final class HashMapBuilder[K, V] extends Builder[(K, V), HashMap[K, V]] {
+private[immutable] final class HashMapBuilder[K, V] extends Builder[(K, V), HashMap[K, V]] {
   import Node._
   import MapNode._
 
