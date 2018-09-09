@@ -648,6 +648,7 @@ private final class BitmapIndexedMapNode[K, +V](
             leftDataIdx += 1
             compressedDataIdx += 1
           } else if ((bitpos & migrateDataToNodeMap) != 0) {
+            // TODO: Build this in in one construction
             val newNode = new BitmapIndexedMapNode(0, 0, Array(), Array(), 0)
               .updated(getKey(leftDataIdx), getValue(leftDataIdx), getHash(leftDataIdx), improve(getHash(leftDataIdx)), nextShift)
               .updated(bm.getKey(rightDataIdx), bm.getValue(rightDataIdx), bm.getHash(rightDataIdx), improve(getHash(rightDataIdx)), nextShift)
@@ -667,7 +668,9 @@ private final class BitmapIndexedMapNode[K, +V](
               val leftImproved = improve(leftOriginalHash)
 
               if (n.containsKey(leftKey, leftOriginalHash, leftImproved, nextShift)) n
-              else n.updated(leftKey, leftValue, leftOriginalHash, leftImproved, nextShift)
+              else
+                // TODO: Build this in in one construction
+                n.updated(leftKey, leftValue, leftOriginalHash, leftImproved, nextShift)
             }
 
             result.content(newContentLength - compressedNodeIdx - 1) = newNode
