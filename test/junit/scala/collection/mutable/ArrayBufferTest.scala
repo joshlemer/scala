@@ -465,4 +465,36 @@ class ArrayBufferTest {
       )
     }
   }
+
+  @Test
+  def padTo: Unit = {
+    val sentinel = new AnyRef
+
+    for {
+      size <- 0 to 100
+      range = 0 until size
+      len <- -1 to 101
+    } {
+      def newBuf = {
+        val b = ArrayBuffer[Int]()
+        b.addAll(range)
+        b
+      }
+
+      val fromArrayBuffer = newBuf.padTo(len, sentinel)
+      val fromRange = range.padTo(len, sentinel)
+      println(fromArrayBuffer)
+      println(fromRange)
+
+      assert(fromArrayBuffer == fromRange,
+        s"""Failed on:
+           |  size: $size
+           |  len: $len
+           |  starting ArrayBuffer: $newBuf
+           |  resulting ArrayBuffer: $fromArrayBuffer
+           |  fromRange: $fromRange
+         """.stripMargin
+      )
+    }
+  }
 }

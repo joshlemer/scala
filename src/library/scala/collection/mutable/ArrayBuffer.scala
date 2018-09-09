@@ -207,7 +207,24 @@ class ArrayBuffer[A] private (initialElements: Array[AnyRef], initialSize: Int)
     }
   }
 
-  override def clone(): ArrayBuffer[A] = new ArrayBuffer[A](array.take(size0), size0)
+  private def cloneAs[B >: A]: ArrayBuffer[B] = new ArrayBuffer[B](array.take(size0), size0)
+
+  override def clone(): ArrayBuffer[A] = cloneAs[A]
+
+  override def padTo[B >: A](len: Int, elem: B) = {
+    if (len <= length) cloneAs[B]
+    else {
+      val arr = new Array[AnyRef](len)
+      Array.copy(array, 0, arr, 0, size0)
+      var i = length
+      while (i < len) {
+        arr(i) = elem.asInstanceOf[AnyRef]
+        i += 1
+      }
+      new ArrayBuffer(arr, len)
+    }
+  }
+
 }
 
 /**
