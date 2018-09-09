@@ -13,6 +13,8 @@ private[immutable] final object Node {
 
   final val BitPartitionSize = 5
 
+  final val BranchingFactor = 1 << BitPartitionSize
+
   final val BitPartitionMask = (1 << BitPartitionSize) - 1
 
   final val MaxDepth = ceil(HashCodeLength.toDouble / BitPartitionSize).toInt

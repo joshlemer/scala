@@ -143,7 +143,8 @@ class HashMapBuilderTest {
   @Test
   def foo: Unit = {
 
-    val b = new HashMapBuilder[Int, String]
+    println(Node.BranchingFactor)
+
 
   }
 
