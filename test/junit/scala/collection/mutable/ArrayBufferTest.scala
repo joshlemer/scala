@@ -351,4 +351,118 @@ class ArrayBufferTest {
     }
   }
 
+  @Test
+  def drop: Unit = {
+
+    for {
+      size <- 0 to 100
+      range = 0 until size
+      n <- -1 to 101
+    } {
+      def newBuf = {
+        val b = ArrayBuffer[Int]()
+        b.addAll(range)
+        b
+      }
+
+      val fromArrayBuffer = newBuf.drop(n)
+      val fromRange = range.drop(n)
+
+      assert(fromArrayBuffer == fromRange,
+        s"""Failed on:
+           |  size: $size
+           |  n: $n
+           |  starting ArrayBuffer: $newBuf
+           |  resulting ArrayBuffer: $fromArrayBuffer
+           |  fromRange: $fromRange
+         """.stripMargin
+      )
+    }
+  }
+
+  @Test
+  def dropRight: Unit = {
+
+    for {
+      size <- 0 to 100
+      range = 0 until size
+      n <- -1 to 101
+    } {
+      def newBuf = {
+        val b = ArrayBuffer[Int]()
+        b.addAll(range)
+        b
+      }
+
+      val fromArrayBuffer = newBuf.dropRight(n)
+      val fromRange = range.dropRight(n)
+
+      assert(fromArrayBuffer == fromRange,
+        s"""Failed on:
+           |  size: $size
+           |  n: $n
+           |  starting ArrayBuffer: $newBuf
+           |  resulting ArrayBuffer: $fromArrayBuffer
+           |  fromRange: $fromRange
+         """.stripMargin
+      )
+    }
+  }
+
+  @Test
+  def take: Unit = {
+
+    for {
+      size <- 0 to 100
+      range = 0 until size
+      n <- -1 to 101
+    } {
+      def newBuf = {
+        val b = ArrayBuffer[Int]()
+        b.addAll(range)
+        b
+      }
+
+      val fromArrayBuffer = newBuf.take(n)
+      val fromRange = range.take(n)
+
+      assert(fromArrayBuffer == fromRange,
+        s"""Failed on:
+           |  size: $size
+           |  n: $n
+           |  starting ArrayBuffer: $newBuf
+           |  resulting ArrayBuffer: $fromArrayBuffer
+           |  fromRange: $fromRange
+         """.stripMargin
+      )
+    }
+  }
+  @Test
+  def takeRight: Unit = {
+
+    for {
+      size <- 0 to 100
+      range = 0 until size
+      n <- -1 to 101
+    } {
+      def newBuf = {
+        val b = ArrayBuffer[Int]()
+        b.addAll(range)
+        b
+      }
+
+      val fromArrayBuffer = newBuf.takeRight(n)
+      val fromRange = range.takeRight(n)
+
+      assert(fromArrayBuffer == fromRange,
+        s"""Failed on:
+           |  size: $size
+           |  n: $n
+           |  starting ArrayBuffer: $newBuf
+           |  resulting ArrayBuffer: $fromArrayBuffer
+           |  fromRange: $fromRange
+         """.stripMargin
+      )
+    }
+  }
 }

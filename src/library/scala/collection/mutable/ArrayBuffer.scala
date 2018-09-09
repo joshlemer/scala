@@ -70,6 +70,7 @@ class ArrayBuffer[A] private (initialElements: Array[AnyRef], initialSize: Int)
 
   override def iterableFactory: SeqFactory[ArrayBuffer] = ArrayBuffer
 
+
   def clear(): Unit = reduceToSize(0)
 
   def addOne(elem: A): this.type = {
@@ -152,7 +153,7 @@ class ArrayBuffer[A] private (initialElements: Array[AnyRef], initialSize: Int)
 
   @deprecated("Use 'new GrowableBuilder(this).mapResult(f)' instead", "2.13.0")
   @deprecatedOverriding("ArrayBuffer[A] no longer extends Builder[A, ArrayBuffer[A]]", "2.13.0")
-  @inline def mapResult[NewTo](f: (ArrayBuffer[A]) ⇒ NewTo): Builder[A, NewTo] = new GrowableBuilder(this).mapResult(f)
+  @inline def mapResult[NewTo](f: ArrayBuffer[A] ⇒ NewTo): Builder[A, NewTo] = new GrowableBuilder(this).mapResult(f)
 
   override protected[this] def stringPrefix = "ArrayBuffer"
 
@@ -176,6 +177,37 @@ class ArrayBuffer[A] private (initialElements: Array[AnyRef], initialSize: Int)
     if (length > 1) scala.util.Sorting.stableSort(array.asInstanceOf[Array[B]])
     this
   }
+
+  override def drop(n: Int): ArrayBuffer[A] = {
+    if (n <= 0) clone()
+    else if (n >= size0) ArrayBuffer.empty[A]
+    else new ArrayBuffer[A](array.slice(n, size0), size0 - n)
+  }
+
+  override def dropRight(n: Int) =
+    if (n <= 0) clone()
+    else if (n >= size0) ArrayBuffer.empty[A]
+    else {
+      val right = size0 - n
+      new ArrayBuffer[A](array.slice(0, right), right)
+    }
+
+  override def take(n: Int): ArrayBuffer[A] = {
+    if (n <= 0) ArrayBuffer.empty[A]
+    else if (n >= size0) clone()
+    else new ArrayBuffer[A](array.take(n), n)
+  }
+
+  override def takeRight(n: Int): ArrayBuffer[A] = {
+    if (n <= 0) ArrayBuffer.empty[A]
+    else if (n >= size0) clone()
+    else {
+      val left = size0 - n
+      new ArrayBuffer[A](array.slice(left, size0), size0 - left)
+    }
+  }
+
+  override def clone(): ArrayBuffer[A] = new ArrayBuffer[A](array.take(size0), size0)
 }
 
 /**
