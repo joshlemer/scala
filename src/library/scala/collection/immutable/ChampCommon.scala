@@ -5,8 +5,6 @@ import java.lang.Integer.bitCount
 import java.lang.Math.ceil
 import java.lang.System.arraycopy
 
-import scala.reflect.ClassTag
-
 private[immutable] final object Node {
 
   final val HashCodeLength = 32
