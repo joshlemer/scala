@@ -655,7 +655,7 @@ private final class BitmapIndexedMapNode[K, +V](
     // assert(key0 != key1)
 
     if (shift >= HashCodeLength) {
-      new HashCollisionMapNode[K, V1](originalHash0, keyHash0, Array(key0, key1), Array(value0, value1))
+      new HashCollisionMapNode[K, V1](originalHash0, keyHash0, Vector((key0, value0), (key1, value1)))
     } else {
       val mask0 = maskFrom(keyHash0, shift)
       val mask1 = maskFrom(keyHash1, shift)
@@ -1013,79 +1013,83 @@ private final class BitmapIndexedMapNode[K, +V](
 
 }
 
-private final class HashCollisionMapNode[K, +V](
+private final class HashCollisionMapNode[K, +V ](
   val originalHash: Int,
   val hash: Int,
-  var contentKeys: Array[Any],
-  var contentValues: Array[Any]) extends MapNode[K, V] {
+  var content: Vector[(K, V @uV)]
+  ) extends MapNode[K, V] {
 
   import Node._
 
-
-
-  require(contentKeys.size >= 2)
+  require(content.length >= 2)
 
   releaseFence()
 
-  def size = contentKeys.size
+  private[immutable] def indexOf(key: K): Int = {
+    val iter = content.iterator
+    var i = 0
+    while (iter.hasNext) {
+      if (iter.next()._1 == key) return i
+      i += 1
+    }
+    -1
+  }
+
+  def size = content.length
 
   def get(key: K, originalHash: Int, hash: Int, shift: Int): Option[V] =
     if (this.hash == hash) {
-      val index = contentKeys.indexOf(key)
-      if (index >= 0) Some(contentValues(index).asInstanceOf[V]) else None
+      val index = indexOf(key)
+      if (index >= 0) Some(content(index)._2) else None
     } else None
 
   def getOrElse[V1 >: V](key: K, originalHash: Int, hash: Int, shift: Int, f: => V1): V1 = {
     if (this.hash == hash) {
-      contentKeys.indexOf(key) match {
+      indexOf(key) match {
         case -1 => f
-        case other => contentValues(other).asInstanceOf[V]
+        case other => content(other)._2
       }
     } else f
   }
 
   override def containsKey(key: K, originalHash: Int, hash: Int, shift: Int): Boolean =
-    this.hash == hash && contentKeys.contains(key)
+    this.hash == hash && indexOf(key) >= 0
 
   def contains[V1 >: V](key: K, value: V1, hash: Int, shift: Int): Boolean =
     this.hash == hash && {
-      val index = contentKeys.indexOf(key)
-      index >= 0 && (contentValues(index).asInstanceOf[AnyRef] eq value.asInstanceOf[AnyRef])
+      val index = indexOf(key)
+      index >= 0 && (content(index)._2.asInstanceOf[AnyRef] eq value.asInstanceOf[AnyRef])
     }
 
   def updated[V1 >: V](key: K, value: V1, originalHash: Int, hash: Int, shift: Int): MapNode[K, V1] = {
-    val index = contentKeys.indexOf(key)
+    val index = indexOf(key)
     if (index >= 0) {
-      if (contentValues(index).asInstanceOf[AnyRef] eq value.asInstanceOf[AnyRef]) {
+
+      if (content(index)._2.asInstanceOf[AnyRef] eq value.asInstanceOf[AnyRef]) {
         this
       } else {
-        val newContentKeys = contentKeys.clone()
-        newContentKeys(index) = key
-        val newContentValues = contentValues.clone()
-        newContentValues(index) = value
-        new HashCollisionMapNode[K, V1](originalHash, hash, newContentKeys, newContentValues)
+        new HashCollisionMapNode[K, V1](originalHash, hash, content.updated[(K, V1)](index, (key, value)))
       }
     } else {
-      new HashCollisionMapNode[K, V1](originalHash, hash, contentKeys.appended(key), contentValues.appended(value))
+      new HashCollisionMapNode[K, V1](originalHash, hash, content.appended[(K, V1)]((key, value)))
     }
   }
 
-  def removed[V1 >: V](key: K, originalHash: Int, hash: Int, shift: Int): MapNode[K, V1] =
+  def removed[V1 >: V](key: K, originalHash: Int, hash: Int, shift: Int): MapNode[K, V1] = {
     if (!this.containsKey(key, originalHash, hash, shift)) {
       this
     } else {
-      val index = contentKeys.indexOf(key)
-      val newContentKeys = removeAnyElement(contentKeys, index)
-      val newContentValues = removeAnyElement(contentValues, index)
+      val updatedContent = content.filterNot(keyValuePair => keyValuePair._1 == key)
+      // assert(updatedContent.size == content.size - 1)
 
-      // assert(newContentKeys.length == contentKeys.length - 1)
-
-      newContentKeys.length match {
+      updatedContent.size match {
         case 1 =>
-          new BitmapIndexedMapNode[K, V1](bitposFrom(maskFrom(hash, 0)), 0, Array(newContentKeys.head, newContentValues.head), Array(originalHash), 1)
-        case _ => new HashCollisionMapNode[K, V1](originalHash, hash, newContentKeys, newContentValues)
+          val (k, v) = updatedContent(0)
+          new BitmapIndexedMapNode[K, V1](bitposFrom(maskFrom(hash, 0)), 0, Array(k, v), Array(originalHash), 1)
+        case _ => new HashCollisionMapNode[K, V1](originalHash, hash, updatedContent)
       }
     }
+  }
 
   def hasNodes: Boolean = false
 
@@ -1096,22 +1100,17 @@ private final class HashCollisionMapNode[K, +V](
 
   def hasPayload: Boolean = true
 
-  def payloadArity: Int = contentKeys.length
+  def payloadArity: Int = content.length
 
   def getKey(index: Int): K = getPayload(index)._1
   def getValue(index: Int): V = getPayload(index)._2
 
-  def getPayload(index: Int): (K, V) = (contentKeys(index).asInstanceOf[K], contentValues(index).asInstanceOf[V])
+  def getPayload(index: Int): (K, V) = content(index)
+
   override def getHash(index: Int): Int = originalHash
   def sizePredicate: Int = SizeMoreThanOne
 
-  def foreach[U](f: ((K, V)) => U): Unit = {
-    var i = 0
-    while (i < contentKeys.length) {
-      f(getPayload(i))
-      i += 1
-    }
-  }
+  def foreach[U](f: ((K, V)) => U): Unit = content.foreach(f)
 
   def concat[V1 >: V](that: MapNode[K, V1], shift: Int) = that match {
 
@@ -1136,15 +1135,14 @@ private final class HashCollisionMapNode[K, +V](
       case node: HashCollisionMapNode[K, V] =>
         (this eq node) ||
           (this.hash == node.hash) &&
-            (this.contentKeys.length == node.contentKeys.length) && {
-              var i = 0
-              while (i < this.contentKeys.length) {
-                val key = contentKeys(i)
-                val index = node.contentKeys.indexOf(key)
-                if (index < 0 || node.contentValues(index).asInstanceOf[K] != contentValues(index).asInstanceOf[K]) {
+            (this.content.length == node.content.length) && {
+              val iter = content.iterator
+              while (iter.hasNext) {
+                val (key, value) = iter.next()
+                val index = node.indexOf(key)
+                if (index < 0 || value != node.content(index)._2) {
                   return false
                 }
-                i += 1
               }
               true
             }
@@ -1212,7 +1210,6 @@ private final class MapKeyValueTupleReverseIterator[K, V](rootNode: MapNode[K, V
 
     payload
   }
-
 }
 
 private final class MapKeyValueTupleHashIterator[K, V](rootNode: MapNode[K, V])
@@ -1236,7 +1233,6 @@ private final class MapKeyValueTupleHashIterator[K, V](rootNode: MapNode[K, V])
     currentValueCursor -= 1
     this
   }
-
 }
 
 /**
@@ -1405,14 +1401,12 @@ private[immutable] final class HashMapBuilder[K, V] extends Builder[(K, V), Hash
           hash += keyHash
         }
       case hc: HashCollisionMapNode[K, V] =>
-        val index = hc.contentKeys.indexOf(key)
+        val index = hc.indexOf(key)
         if (index < 0) {
           hash += keyHash
-          hc.contentKeys = hc.contentKeys.appended(key)
-          hc.contentValues = hc.contentValues.appended(value)
+          hc.content = hc.content.appended((key, value))
         } else {
-          hc.contentKeys(index) = key
-          hc.contentValues(index) = value
+          hc.content = hc.content.updated(index, (key, value))
         }
     }
   }
@@ -1452,11 +1446,10 @@ private[immutable] final class HashMapBuilder[K, V] extends Builder[(K, V), Hash
           hash += keyHash
         }
       case hc: HashCollisionMapNode[K, V] =>
-        val index = hc.contentKeys.indexOf(key)
+        val index = hc.indexOf(key)
         if (index < 0) {
           hash += keyHash
-          hc.contentKeys = hc.contentKeys.appended(key)
-          hc.contentValues = hc.contentValues.appended(value)
+          hc.content = hc.content.appended((key, value))
         }
     }
   }
@@ -1531,7 +1524,7 @@ private[immutable] final class HashMapBuilder[K, V] extends Builder[(K, V), Hash
 
           case hc: HashCollisionMapNode[K, V] =>
             var i = 0
-            while (i < hc.contentKeys.length) {
+            while (i < hc.content.length) {
               update(rootNode, hc.getKey(i), hc.getValue(i), hc.originalHash, hc.hash, shift = 0)
               i += 1
             }
