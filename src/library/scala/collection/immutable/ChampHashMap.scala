@@ -355,7 +355,7 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
             var result: MapNode[K, V1] = leftHc
             var i = 0
             val improved = improve(leftHc.originalHash)
-            while (i < leftHc.contentKeys.length) {
+            while (i < leftHc.size) {
               result = result.updated(rightHc.getKey(i), rightHc.getValue(i), rightHc.originalHash, improved, shift)
               i += 1
             }
@@ -814,6 +814,7 @@ private final class BitmapIndexedMapNode[K, +V](
       j += 1
     }
   }
+
   def concat[V1 >: V](that: MapNode[K, V1], shift: Int) = that match {
 
     case bm: BitmapIndexedMapNode[K, V1] =>
@@ -905,7 +906,7 @@ private final class BitmapIndexedMapNode[K, +V](
             leftDataIdx += 1
             compressedDataIdx += 1
           } else if ((bitpos & migrateDataToNodeMap) != 0) {
-            // TODO: Build this in in one construction
+
             val newNode = new BitmapIndexedMapNode(0, 0, Array(), Array(), 0)
               .updated(getKey(leftDataIdx), getValue(leftDataIdx), getHash(leftDataIdx), improve(getHash(leftDataIdx)), nextShift)
               .updated(bm.getKey(rightDataIdx), bm.getValue(rightDataIdx), bm.getHash(rightDataIdx), improve(getHash(rightDataIdx)), nextShift)
@@ -926,7 +927,6 @@ private final class BitmapIndexedMapNode[K, +V](
 
               if (n.containsKey(leftKey, leftOriginalHash, leftImproved, nextShift)) n
               else
-                // TODO: Build this in in one construction
                 n.updated(leftKey, leftValue, leftOriginalHash, leftImproved, nextShift)
             }
 
@@ -977,8 +977,11 @@ private final class BitmapIndexedMapNode[K, +V](
       result
 
     case hc: HashCollisionMapNode[K, V1] =>
-      ???
-
+      var current: MapNode[K, V1] = this
+      hc.content.foreach { case (k, v) =>
+        current = current.updated(k, v, hc.originalHash, hc.hash, shift)
+      }
+      current
   }
 
   override def equals(that: Any): Boolean =
@@ -1115,15 +1118,18 @@ private final class HashCollisionMapNode[K, +V ](
   def concat[V1 >: V](that: MapNode[K, V1], shift: Int) = that match {
 
     case bm: BitmapIndexedMapNode[K, V1] =>
-
-      ???
+      var current: MapNode[K, V1] = bm
+      content.foreach { case (k, v) =>
+          current = current.updated(k, v, originalHash, hash, shift)
+      }
+      current
 
     case hc: HashCollisionMapNode[K, V1] =>
       var result: MapNode[K, V1] = this
 
       var i = 0
       val improved = improve(originalHash)
-      while (i < contentKeys.length) {
+      while (i < content.length) {
         result = result.updated(hc.getKey(i), hc.getValue(i), originalHash, improved, shift)
         i += 1
       }
