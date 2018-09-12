@@ -6,8 +6,8 @@ import org.scalacheck._
 
 object ImmutableChampHashMapProperties extends Properties("immutable.HashMap") {
 
-  type K = Int
-  type V = Int
+  type K = String
+  type V = String
   type T = (K, V)
 
   //  override def overrideParameters(p: org.scalacheck.Test.Parameters) =
@@ -59,7 +59,9 @@ object ImmutableChampHashMapProperties extends Properties("immutable.HashMap") {
     xs == ys
   }
 
-  property("concat.toList = left.toList ++ right.toList toMap") = forAll { (left: HashMap[K, V], right: HashMap[V, V]) =>
-    (left ++ right) == (left.toSeq ++ right.toSeq).toMap
-  }
+  property("concat.toList = left.toList ++ right.toList toMap") =
+    forAll { (left: HashMap[K, V], right: HashMap[V, V]) =>
+      (left ++ right) == (left.toSeq ++ right.toSeq).toMap
+    }
+
 }
