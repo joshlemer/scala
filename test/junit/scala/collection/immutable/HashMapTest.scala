@@ -15,6 +15,7 @@ class HashMapTest {
   @Test
   def canMergeIdenticalHashMap1sWithNullKvs(): Unit = {
     def m = new OldHashMap.OldHashMap1(1, computeHashF(1), 1, null)
+
     val merged = m.merged(m)(null)
     assertEquals(m, merged)
   }
@@ -22,6 +23,7 @@ class HashMapTest {
   @Test
   def canMergeIdenticalHashMap1sWithNullKvsCustomMerge(): Unit = {
     def m = new OldHashMap.OldHashMap1(1, computeHashF(1), 1, null)
+
     val merged = m.merged(m) {
       case ((k1, v1), (k2, v2)) =>
         (k1, v1 + v2)
@@ -105,48 +107,14 @@ class HashMapTest {
 
   @Test
   def canMergeHashMapCollision1WithCorrectMerege() {
-    case class A(k: Int) { override def hashCode = 0 }
+    case class A(k: Int) {
+      override def hashCode = 0
+    }
     val m1 = OldHashMap(A(0) -> 2, A(1) -> 2)
     val m2 = OldHashMap(A(0) -> 1, A(1) -> 1)
     val merged = m1.merged(m2) { case ((k, l), (_, r)) => k -> (l - r) }
     val expected = OldHashMap(A(0) -> 1, A(1) -> 1)
     assertEquals(merged, expected)
   }
-
-  @Test
-  def builder: Unit = {
-
-    val hm = HashMap(1 -> 1)
-
-    val hm2 = hm updated (1, 1)
-
-    val hmb = new HashMapBuilder[Int, String]
-
-    hmb.addOne(1 -> "hello")
-    hmb.addOne(2 -> "again")
-
-    hmb.addAll(Seq(
-      1 -> "hh",
-      6 -> "66",
-      1 -> "hhhhhhhh",
-      -5 -> ""
-    ))
-
-    assertEquals(Map( 1 -> "hello", 2 -> "again",    1 -> "hh", 6 -> "66", 1 -> "hhhhhhhh", -5 -> ""), hmb.result())
-
-  }
 }
 
-@RunWith(classOf[JUnit4])
-class HashMapBuilderTest {
-
-  @Test
-  def foo: Unit = {
-
-    val M = 20
-    println((1 to M).map(i => i -> i.toString).toMap ++ ((M + 1) to (M * 2)).map(i => i -> i.toString).toMap)
-
-
-  }
-
-}
