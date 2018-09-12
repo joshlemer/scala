@@ -117,7 +117,7 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
 
     that match {
       case hm: HashMap[K, V1] =>
-        var newHash = cachedJavaKeySetHashCode
+        var newHash = cachedJavaKeySetHashCode + hm.cachedJavaKeySetHashCode
 
         /** Recursively, immutably concatenates two MapNodes, node-by-node as to visit the least number of nodes possible */
         def concat(left: MapNode[K, V1], right: MapNode[K, V1], shift: Int): MapNode[K, V1] =
@@ -278,7 +278,7 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
                         val rightImproved = improve(rightOriginalHash)
 
                         if (n.containsKey(rightKey, rightOriginalHash, rightImproved, nextShift)) {
-                          newHash -= improve(leftBm.getHash(leftDataIdx))
+                          newHash -= improve(rightBm.getHash(rightDataIdx))
                         }
 
                         n.updated(rightKey, rightValue, rightOriginalHash, rightImproved, nextShift)
@@ -295,6 +295,7 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
                         leftBm.getKey(leftDataIdx).asInstanceOf[AnyRef]
                       result.content(MapNode.TupleLength * compressedDataIdx + 1) =
                         leftBm.getValue(leftDataIdx).asInstanceOf[AnyRef]
+                      result.originalHashes(compressedDataIdx) = leftBm.originalHashes(leftDataIdx)
 
                       compressedDataIdx += 1
                       leftDataIdx += 1
@@ -304,6 +305,7 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
                         rightBm.getKey(rightDataIdx).asInstanceOf[AnyRef]
                       result.content(MapNode.TupleLength * compressedDataIdx + 1) =
                         rightBm.getValue(rightDataIdx).asInstanceOf[AnyRef]
+                      result.originalHashes(compressedDataIdx) = rightBm.originalHashes(rightDataIdx)
 
                       compressedDataIdx += 1
                       rightDataIdx += 1
@@ -339,6 +341,7 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
                         rightBm.getKey(rightDataIdx).asInstanceOf[AnyRef]
                       result.content(MapNode.TupleLength * compressedDataIdx + 1) =
                         rightBm.getValue(rightDataIdx).asInstanceOf[AnyRef]
+                      result.originalHashes(compressedDataIdx) = rightBm.originalHashes(rightDataIdx)
 
                       compressedDataIdx += 1
                       rightDataIdx += 1
