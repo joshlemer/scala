@@ -7,7 +7,7 @@ import java.lang.System.arraycopy
 
 import scala.annotation.unchecked.{uncheckedVariance => uV}
 import scala.collection.Hashing.improve
-import scala.collection.mutable.Builder
+import scala.collection.mutable.{ArrayBuffer, Builder, ListBuffer}
 import scala.collection.{Iterator, MapFactory, StrictOptimizedIterableOps, StrictOptimizedMapOps}
 import scala.util.hashing.MurmurHash3
 import scala.runtime.Statics.releaseFence
@@ -103,6 +103,149 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
     if (newRootNode ne rootNode)
       HashMap(newRootNode, cachedJavaKeySetHashCode - keyHash)
     else this
+  }
+
+  override def filterImpl(pred: ((K, V)) => Boolean, isFlipped: Boolean): HashMap[K, V] = {
+    var newHash = this.cachedJavaKeySetHashCode
+    val EmptySentinel = new AnyRef
+
+    /** Used for communication between levels of recursion
+      * First element is the key
+      * Second element is the value
+      * Third element is the original hash
+      * */
+    val mutableTuple = Array.fill[Any](3)(EmptySentinel)
+
+    /** returns null if the resulting node is empty */
+    def filter(node: MapNode[K, V], shift: Int): MapNode[K, V] = node match {
+      case bm: BitmapIndexedMapNode[K, V] =>
+        var newDataMap = bm.dataMap
+        var newNodeMap = bm.nodeMap
+        var migrateToInlineMap = 0
+        var nodesToReplaceMap = 0
+
+        val nodesToReplace = ArrayBuffer[MapNode[K, V]]()
+
+        /** will be an alternating sequence of key,value,original hash, key,value, original hash... */
+        val dataToMigrateToInline = ArrayBuffer[Any]()
+
+        var i = 0
+
+        while (i < Node.BranchingFactor) {
+          val bitpos = Node.bitposFrom(i)
+
+          if ((bitpos & bm.dataMap) != 0) {
+            if (pred(bm.getPayload(i)) == isFlipped) {
+              newDataMap ^= bitpos
+              newHash -= improve(bm.getHash(i))
+            }
+          } else if ((bitpos & bm.nodeMap) != 0) {
+            val node = bm.getNode(i)
+            val filteredNode = filter(node, shift + Node.BitPartitionSize)
+
+            if (filteredNode == null) {
+              if (filteredNode ne node) {
+                if (mutableTuple(0) != EmptySentinel) {
+                  dataToMigrateToInline += mutableTuple(0)
+                  dataToMigrateToInline += mutableTuple(1)
+                  migrateToInlineMap |= bitpos
+                  newDataMap |= bitpos
+                  newNodeMap ^= bitpos
+                  mutableTuple(0) = EmptySentinel
+                  mutableTuple(1) = EmptySentinel
+                }
+                newNodeMap ^= bitpos
+              } else if (filteredNode ne node) {
+                if (mutableTuple(0) != EmptySentinel) {
+                  dataToMigrateToInline += mutableTuple(0)
+                  dataToMigrateToInline += mutableTuple(1)
+                  migrateToInlineMap |= bitpos
+                  newDataMap |= bitpos
+                  newNodeMap ^= bitpos
+                  mutableTuple(0) = EmptySentinel
+                } else {
+                  nodesToReplace += filteredNode
+                  nodesToReplaceMap |= bitpos
+                }
+              }
+            }
+          }
+          i += 1
+        }
+
+
+        if (newDataMap == 0 && newNodeMap == 0) {
+          null
+        } else if (bitCount(newDataMap) == 1 && newNodeMap == 0) {
+          val bitpos = newDataMap
+
+          if ((bitpos & migrateToInlineMap) != 0) {
+            mutableTuple(0) = dataToMigrateToInline(0)
+            mutableTuple(1) = dataToMigrateToInline(1)
+            mutableTuple(2) = dataToMigrateToInline(2)
+          } else {
+            mutableTuple(0) = bm.content(0)
+            mutableTuple(1) = bm.content(1)
+          }
+          null
+        } else {
+          val newDataArity = bitCount(newDataMap)
+          val newNodeArity = bitCount(newNodeMap)
+          val newContent = new Array[Any](MapNode.TupleLength * newDataArity + newNodeArity)
+          val newHashes = new Array[Int](newDataArity)
+          val newNode = new BitmapIndexedMapNode[K, V](newDataMap, newNodeMap, newContent, newHashes, newDataArity)
+
+          var i = 0
+          var dataIndex = 0
+          var nodeIndex = 0
+          var dataToMigrateToInlineIndex = 0
+          var bmDataIndex = 0
+          var bmNodeIndex = 0
+          var nodesToReplaceIndex = 0
+
+          while (i < Node.BranchingFactor) {
+            val bitpos = Node.bitposFrom(i)
+
+            if ((bitpos & newDataMap) != 0) {
+              if ((bitpos & migrateToInlineMap) != 0) {
+                newContent(MapNode.TupleLength * dataIndex) = dataToMigrateToInline(dataToMigrateToInlineIndex)
+                newContent(MapNode.TupleLength * dataIndex + 1) = dataToMigrateToInline(dataToMigrateToInlineIndex + 1)
+                newHashes(dataIndex) = dataToMigrateToInline(dataToMigrateToInlineIndex + 2).asInstanceOf[Int]
+                dataToMigrateToInlineIndex += 3
+              } else {
+                newContent(MapNode.TupleLength * dataIndex) = bm.getKey(bmDataIndex)
+                newContent(MapNode.TupleLength * dataIndex + 1) = bm.getValue(bmDataIndex)
+                newHashes(dataIndex) = bm.getHash(bmDataIndex)
+                bmDataIndex += 1
+              }
+              dataIndex += 1
+            } else if ((bitpos & newNodeMap) != 0) {
+              val destinationIndex = newContent.length - nodeIndex - 1
+              if ((bitpos & nodesToReplaceMap) != 0) {
+                val replacementNode = nodesToReplace(nodesToReplaceIndex)
+                newContent(destinationIndex) = replacementNode
+                nodesToReplaceIndex += 1
+                newNode.size += replacementNode.size
+              } else {
+                val passedNode = bm.getNode(bmNodeIndex)
+                newContent(destinationIndex) = passedNode
+                bmNodeIndex += 1
+                newNode.size += passedNode.size
+              }
+              nodeIndex += 1
+            }
+
+            i += 1
+          }
+          newNode
+        }
+
+      case hc: HashCollisionMapNode[K, V] =>
+
+    }
+
+    val filtered = filter(rootNode, 0)
+    if (rootNode eq filtered) this else new HashMap(filtered, newHash)
   }
 
   override def concat[V1 >: V](that: scala.IterableOnce[(K, V1)]): HashMap[K, V1] = {
