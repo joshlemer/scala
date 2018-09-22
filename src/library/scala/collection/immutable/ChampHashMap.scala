@@ -255,13 +255,12 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
                         val leftOriginalHash = leftBm.getHash(leftDataIdx)
                         val leftImproved = improve(leftOriginalHash)
 
-                        val updated = n.updated(leftKey, leftValue, leftOriginalHash, leftImproved, nextShift)
-
-                        if (updated.size > n.size) {
+                        if (n.containsKey(leftKey, leftOriginalHash, leftImproved, nextShift)) {
                           newHash -= improve(leftBm.getHash(leftDataIdx))
+                          n
+                        } else {
+                          n.updated(leftKey, leftValue, leftOriginalHash, leftImproved, nextShift)
                         }
-
-                        updated
                       }
 
                       result.content(newContentSize - compressedNodeIdx - 1) = newNode
@@ -278,12 +277,12 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
                         val rightOriginalHash = rightBm.getHash(rightDataIdx)
                         val rightImproved = improve(rightOriginalHash)
 
-                        val updated = n.updated(rightKey, rightValue, rightOriginalHash, rightImproved, nextShift)
-
-                        if (updated.size > n.size) {
-                          newHash -= improve(rightBm.getHash(rightDataIdx))
+                        if (n.containsKey(rightKey, rightOriginalHash, rightImproved, nextShift)) {
+                          newHash -= improve(leftBm.getHash(leftDataIdx))
+                          n
+                        } else {
+                          n.updated(rightKey, rightValue, rightOriginalHash, rightImproved, nextShift)
                         }
-                        updated
                       }
 
                       result.content(newContentSize - compressedNodeIdx - 1) = newNode
