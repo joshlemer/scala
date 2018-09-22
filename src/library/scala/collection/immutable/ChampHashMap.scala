@@ -434,6 +434,299 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
       that.removeAll(thisKeys) ++ this.removeAll(thatKeys) ++ thisKeys.intersect(thatKeys).map { case k => mergef((k, this(k)), (k, that(k))) }
     }
   }
+  def merged2[V1 >: V](that: HashMap[K, V1])(mergef: MergeFunction[K, V1]): HashMap[K, V1] = {
+
+    that match {
+      case hm: HashMap[K, V1] =>
+
+        val builder = new HashMapBuilder[K, V1]
+
+        def merge(leftKey: K, leftValue: V1, leftOriginalHash: Int, leftHash: Int, rightKey: K, rightValue: V1, rightOriginalHash: Int, rightHash: Int, flipped: Boolean): Unit = {
+          val merged =
+            if (flipped) mergef((rightKey, rightValue), (leftKey, leftValue))
+            else mergef((leftKey, leftValue), (rightKey, rightValue))
+          val (k, v) = merged
+
+          if (k.asInstanceOf[AnyRef] eq leftKey.asInstanceOf[AnyRef]) {
+            builder.addOne(k, v, leftOriginalHash, leftHash)
+          } else if (k.asInstanceOf[AnyRef] eq rightKey.asInstanceOf[AnyRef]) {
+            builder.addOne(k, v, rightOriginalHash, rightHash)
+          } else {
+            builder.addOne(k, v)
+          }
+        }
+
+        def merge(left: MapNode[K, V1], rightKey: K, rightValue: V1, rightOriginalHash: Int, rightHash: Int, shift: Int, flipped: Boolean): Unit = left match {
+          case bm: BitmapIndexedMapNode[K, V1] =>
+            val rightMask = Node.maskFrom(rightHash, shift)
+            val bitpos = Node.bitposFrom(rightMask)
+            val payloadArity = bm.payloadArity
+            val nodeArity = bm.nodeArity
+
+            if ((bm.dataMap & bitpos) != 0) {
+              val index = Node.indexFrom(bm.dataMap, rightMask, bitpos)
+
+              var i = 0
+              while (i < payloadArity) {
+                val leftKey = bm.getKey(i)
+                val leftValue = bm.getValue(i)
+                val leftOriginalHash = bm.getHash(i)
+                val leftImproved = bm.getHash(i)
+                if (i == index) {
+                  if (leftOriginalHash == rightOriginalHash && leftKey == rightKey) {
+                    merge(leftKey, leftValue, leftOriginalHash, leftImproved, rightKey, rightValue, rightOriginalHash, rightHash, flipped)
+                  } else {
+                    builder.addOne(leftKey, leftValue, leftOriginalHash, leftImproved)
+                    builder.addOne(rightKey, rightValue, rightOriginalHash, rightHash)
+                  }
+                } else {
+                  builder.addOne(leftKey, leftValue, leftOriginalHash, leftImproved)
+                }
+                i += 1
+              }
+
+              i = 0
+              while (i < nodeArity) {
+                bm.getNode(i).buildTo(builder)
+                i += 1
+              }
+            } else if ((bm.nodeMap & bitpos) != 0) {
+              val index = Node.indexFrom(bm.nodeMap, rightMask, bitpos)
+              var i = 0
+              while (i < payloadArity) {
+                val node = bm.getNode(i)
+                if (i == index) {
+                  merge(node, rightKey, rightValue, rightOriginalHash, rightHash, shift + Node.BitPartitionSize, flipped)
+                } else {
+                  node.buildTo(builder)
+                }
+
+                i += 1
+              }
+
+            } else {
+              builder.addOne(rightKey, rightValue, rightOriginalHash, rightHash)
+              bm.buildTo(builder)
+            }
+
+          case hc: HashCollisionMapNode[K, V1] =>
+            if (hc.originalHash == rightOriginalHash) {
+              val iter = hc.content.iterator
+              var found = false
+
+              while (iter.hasNext) {
+                val next = iter.next()
+                val nextKey = next._1
+                if (!found && nextKey == rightKey) {
+                  found = true
+                  merge(nextKey, next._2, hc.originalHash, hc.hash, rightKey, rightValue, rightOriginalHash, rightHash, flipped)
+                } else {
+                  builder.addOne(nextKey, next._2, hc.originalHash, hc.hash)
+                }
+              }
+            } else {
+              hc.buildTo(builder)
+              builder.addOne(rightKey, rightValue, rightOriginalHash, rightHash)
+            }
+        }
+
+        def merge(left: MapNode[K, V1], right: MapNode[K, V1], shift: Int): Unit =
+          left match {
+            case leftBm: BitmapIndexedMapNode[K, V] =>
+              right match {
+                case rightBm: BitmapIndexedMapNode[K, V1] =>
+                  var leftNodeRightNode = 0
+                  var leftDataRightNode = 0
+                  var leftNodeRightData = 0
+                  var leftDataOnly = 0
+                  var rightDataOnly = 0
+                  var leftNodeOnly = 0
+                  var rightNodeOnly = 0
+                  var leftDataRightData = 0
+
+                {
+                  var i = 0
+                  var leftIdx = 0
+                  var rightIdx = 0
+
+                  while (i < Node.BranchingFactor) {
+                    val bitpos = Node.bitposFrom(i)
+
+                    if ((bitpos & leftBm.dataMap) != 0) {
+                      if ((bitpos & rightBm.dataMap) != 0) {
+                        val leftMask = Node.maskFrom(improve(leftBm.getHash(leftIdx)), shift)
+                        if (leftMask == Node.maskFrom(improve(rightBm.getHash(rightIdx)), shift)) {
+                          leftDataRightData |= bitpos
+                        } else {
+                          () //should never happen...
+                        }
+                      } else if ((bitpos & rightBm.nodeMap) != 0) {
+                        leftDataRightNode |= bitpos
+                      } else {
+                        leftDataOnly |= bitpos
+                      }
+                    } else if ((bitpos & leftBm.nodeMap) != 0) {
+                      if ((bitpos & rightBm.dataMap) != 0) {
+                        leftNodeRightData |= bitpos
+                      } else if ((bitpos & rightBm.nodeMap) != 0) {
+                        leftNodeRightNode |= bitpos
+                      } else {
+                        leftNodeOnly |= bitpos
+                      }
+                    } else if ((bitpos & rightBm.dataMap) != 0) {
+                      rightDataOnly |= bitpos
+                    } else if ((bitpos & rightBm.nodeMap) != 0) {
+                      rightNodeOnly |= bitpos
+                    }
+
+                    i += 1
+                    if ((bitpos & leftBm.dataMap) != 0) {
+                      leftIdx += 1
+                    }
+                    if ((bitpos & rightBm.dataMap) != 0) {
+                      rightIdx += 1
+                    }
+                  }
+                }
+
+                {
+                  var leftDataIdx = 0
+                  val leftPayloadArity = leftBm.payloadArity
+
+                  var rightDataIdx = 0
+                  val rightPayloadArity = rightBm.payloadArity
+
+                  var leftNodeIdx = 0
+                  val leftNodeArity = leftBm.nodeArity
+
+                  var rightNodeIdx = 0
+                  val rightNodeArity = rightBm.nodeArity
+
+                  val nextShift = shift + Node.BitPartitionSize
+
+                  var idx = 0 // the conceptual, "un-compressed" index
+
+                  var compressedDataIdx = 0
+
+
+                  while (
+                    leftDataIdx < leftPayloadArity ||
+                      rightDataIdx < rightPayloadArity ||
+                      leftNodeIdx < leftNodeArity ||
+                      rightNodeIdx < rightNodeArity) {
+
+                    val bitpos = Node.bitposFrom(idx)
+
+                    if ((bitpos & leftNodeRightNode) != 0) {
+                      merge(leftBm.getNode(leftNodeIdx), rightBm.getNode(rightNodeIdx), nextShift)
+                      rightNodeIdx += 1
+                      leftNodeIdx += 1
+                    } else if ((bitpos & leftDataRightNode) != 0) {
+                      val n = rightBm.getNode(rightNodeIdx)
+                      val leftOriginalHash = leftBm.getHash(leftDataIdx)
+
+                      merge(
+                        left = n,
+                        rightKey = leftBm.getKey(leftDataIdx),
+                        rightValue = leftBm.getValue(leftDataIdx),
+                        rightOriginalHash = leftOriginalHash,
+                        rightHash = improve(leftOriginalHash),
+                        shift = nextShift,
+                        flipped = true
+                      )
+
+                      rightNodeIdx += 1
+                      leftDataIdx += 1
+                    }
+                    else if ((bitpos & leftNodeRightData) != 0) {
+                      val n = leftBm.getNode(leftNodeIdx)
+                      val rightOriginalHash = rightBm.getHash(rightDataIdx)
+
+                      merge(
+                        left = n,
+                        rightKey = rightBm.getKey(rightDataIdx),
+                        rightValue = rightBm.getValue(rightDataIdx),
+                        rightOriginalHash = rightOriginalHash,
+                        rightHash = improve(rightOriginalHash),
+                        shift = nextShift,
+                        flipped = true
+                      )
+
+                      leftNodeIdx += 1
+                      rightDataIdx += 1
+
+                    } else if ((bitpos & leftDataOnly) != 0) {
+                      val originalHash = leftBm.getHash(leftDataIdx)
+                      builder.addOne(leftBm.getKey(leftDataIdx), leftBm.getValue(leftDataIdx), originalHash, improve(originalHash))
+                      leftDataIdx += 1
+                    } else if ((bitpos & rightDataOnly) != 0) {
+                      val originalHash = right.getHash(rightDataIdx)
+                      builder.addOne(rightBm.getKey(rightDataIdx), rightBm.getValue(rightDataIdx), originalHash, improve(originalHash))
+                      rightDataIdx += 1
+                    } else if ((bitpos & leftNodeOnly) != 0) {
+                      leftBm.buildTo(builder)
+                      leftNodeIdx += 1
+                    } else if ((bitpos & rightNodeOnly) != 0) {
+                      rightBm.buildTo(builder)
+                      rightNodeIdx += 1
+                    } else if ((bitpos & leftDataRightData) != 0) {
+                      val leftKey = leftBm.getKey(leftDataIdx)
+                      val leftValue = leftBm.getValue(leftDataIdx)
+                      val leftOriginalHash = leftBm.getHash(leftDataIdx)
+                      val rightKey = rightBm.getKey(rightDataIdx)
+                      val rightValue = rightBm.getValue(rightDataIdx)
+                      val rightOriginalHash = rightBm.getHash(rightDataIdx)
+
+                      if (leftOriginalHash == rightOriginalHash && leftKey == rightKey) {
+                        merge(leftKey, leftValue, leftOriginalHash, improve(leftOriginalHash),
+                          rightKey, rightValue, rightOriginalHash, improve(rightOriginalHash),
+                          flipped = false
+                        )
+                      } else {
+                        builder.addOne(leftKey, leftValue, leftOriginalHash, improve(leftOriginalHash))
+                        builder.addOne(rightKey, rightValue, rightOriginalHash, improve(rightOriginalHash))
+                      }
+
+                      leftDataIdx += 1
+                      rightDataIdx += 1
+                    }
+                    idx += 1
+                  }
+                }
+
+                case rightHc: HashCollisionMapNode[K, V1] =>
+                  rightHc.content.foreach { case (k, v) =>
+                    current = current.updated(k, v, rightHc.originalHash, rightHc.hash, shift)
+                  }
+                  current
+              }
+            case leftHc: HashCollisionMapNode[K, V] => right match {
+              case rightBm: BitmapIndexedMapNode[K, V1] =>
+                // should never happen -- hash collisions are never at the same level as bitmapIndexedMapNodes
+                var current: MapNode[K, V1] = rightBm
+                leftHc.content.foreach { case (k, v) =>
+                  current = current.updated(k, v, leftHc.originalHash, leftHc.hash, shift)
+                }
+                current
+              case rightHc: HashCollisionMapNode[K, V1] =>
+                var result: MapNode[K, V1] = leftHc
+                var i = 0
+                val improved = improve(leftHc.originalHash)
+                while (i < leftHc.size) {
+                  result = result.updated(rightHc.getKey(i), rightHc.getValue(i), rightHc.originalHash, improved, shift)
+                  i += 1
+                }
+                result
+            }
+          }
+
+        val newRootNode = concat(rootNode, hm.rootNode, 0)
+        if (newRootNode == null) slowConcat
+        else new HashMap(newRootNode, newHash)
+      case _ =>
+        slowConcat
+    }
+  }
 }
 
 private[immutable] object MapNode {
@@ -483,6 +776,8 @@ private[immutable] sealed abstract class MapNode[K, +V] extends Node[MapNode[K, 
   def foreach[U](f: ((K, V)) => U): Unit
 
   def copy(): MapNode[K, V]
+
+  def buildTo[V1 >: V](builder: HashMapBuilder[K, V1]): Unit
 }
 
 private final class BitmapIndexedMapNode[K, +V](
@@ -879,6 +1174,22 @@ private final class BitmapIndexedMapNode[K, +V](
     new BitmapIndexedMapNode[K, V](dataMap, nodeMap, contentClone, originalHashes.clone(), size)
   }
 
+  override def buildTo[V1 >: V](builder: HashMapBuilder[K, V1]): Unit = {
+    var i = 0
+    while (i < payloadArity) {
+      val originalHash = getHash(i)
+      val improved = improved(i)
+      builder.addOne(getKey(i), getValue(i), originalHash, improved)
+      i += 1
+    }
+
+    var j = 0
+    while (j < nodeArity) {
+      getNode(j).buildTo(builder)
+      j += 1
+    }
+  }
+
 }
 
 private final class HashCollisionMapNode[K, +V ](
@@ -1000,6 +1311,15 @@ private final class HashCollisionMapNode[K, +V ](
     }
 
   override def copy(): HashCollisionMapNode[K, V] = new HashCollisionMapNode[K, V](originalHash, hash, content)
+
+  override def buildTo[V1 >: V](builder: HashMapBuilder[K, V1]): Unit = {
+    var i = 0
+    while (i < size) {
+      val (k, v) = content(i)
+      builder.addOne(k, v, originalHash, hash)
+      i += 1
+    }
+  }
 
   override def hashCode(): Int =
     throw new UnsupportedOperationException("Trie nodes do not support hashing.")
@@ -1295,6 +1615,11 @@ private[immutable] final class HashMapBuilder[K, V] extends Builder[(K, V), Hash
     ensureUnaliased()
     val originalHash = key.##
     update(rootNode, key, value, originalHash, improve(originalHash), 0)
+    this
+  }
+  private[immutable] def addOne(key: K, value: V, originalHash: Int, improvedHash: Int): this.type = {
+    ensureUnaliased()
+    update(rootNode, key, value, originalHash, improvedHash, 0)
     this
   }
 
