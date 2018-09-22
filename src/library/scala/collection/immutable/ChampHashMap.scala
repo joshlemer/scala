@@ -116,6 +116,8 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
 
     that match {
       case hm: HashMap[K, V1] =>
+        // We start with the assumption that the maps are distinct, and then subtract the hash code of keys
+        // in this are overwritten by keys in that.
         var newHash = cachedJavaKeySetHashCode + hm.cachedJavaKeySetHashCode
 
         /** Recursively, immutably concatenates two MapNodes, node-by-node as to visit the least number of nodes possible */
@@ -253,12 +255,13 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
                         val leftOriginalHash = leftBm.getHash(leftDataIdx)
                         val leftImproved = improve(leftOriginalHash)
 
-                        if (n.containsKey(leftKey, leftOriginalHash, leftImproved, nextShift)) {
+                        val updated = n.updated(leftKey, leftValue, leftOriginalHash, leftImproved, nextShift)
+
+                        if (updated.size > n.size) {
                           newHash -= improve(leftBm.getHash(leftDataIdx))
-                          n
-                        } else {
-                          n.updated(leftKey, leftValue, leftOriginalHash, leftImproved, nextShift)
                         }
+
+                        updated
                       }
 
                       result.content(newContentSize - compressedNodeIdx - 1) = newNode
@@ -275,11 +278,12 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
                         val rightOriginalHash = rightBm.getHash(rightDataIdx)
                         val rightImproved = improve(rightOriginalHash)
 
-                        if (n.containsKey(rightKey, rightOriginalHash, rightImproved, nextShift)) {
+                        val updated = n.updated(rightKey, rightValue, rightOriginalHash, rightImproved, nextShift)
+
+                        if (updated.size > n.size) {
                           newHash -= improve(rightBm.getHash(rightDataIdx))
                         }
-
-                        n.updated(rightKey, rightValue, rightOriginalHash, rightImproved, nextShift)
+                        updated
                       }
 
                       result.content(newContentSize - compressedNodeIdx - 1) = newNode
