@@ -7,8 +7,8 @@ import java.lang.System.arraycopy
 
 import scala.annotation.unchecked.{uncheckedVariance => uV}
 import scala.collection.Hashing.improve
-import scala.collection.mutable.Builder
-import scala.collection.{Iterator, MapFactory, StrictOptimizedIterableOps, StrictOptimizedMapOps}
+import scala.collection.mutable.{ArrayBuffer, Builder, ListBuffer}
+import scala.collection.{Iterator, MapFactory, StrictOptimizedIterableOps, StrictOptimizedMapOps, mutable}
 import scala.util.hashing.MurmurHash3
 import scala.runtime.Statics.releaseFence
 
@@ -155,12 +155,11 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
   }
 
   override def filterImpl(pred: ((K, V)) => Boolean, flipped: Boolean): HashMap[K, V] = {
-    // This method has been preemptively overridden in order to ensure that an optimizing implementation may be included
-    // in a minor release without breaking binary compatibility.
-    //
-    // In particular, `filterImpl` could be optimized to filter and reconstruct the trie node-by-node, without having to
-    // perform any hashing or equality checks.
-    super.filterImpl(pred, flipped)
+    val newHashPtr = Array(0)
+    val newRootNode = rootNode.filter(pred, flipped, newHashPtr)
+    if (newRootNode eq rootNode) this
+    else if (newRootNode eq null) HashMap.empty
+    else new HashMap[K, V](newRootNode.asInstanceOf[MapNode[K, V]], newHashPtr(0))
   }
 
   override def removeAll(keys: IterableOnce[K]): HashMap[K, V] = {
@@ -304,6 +303,19 @@ private[immutable] sealed abstract class MapNode[K, +V] extends Node[MapNode[K, 
   def foreach[U](f: ((K, V)) => U): Unit
 
   def copy(): MapNode[K, V]
+
+  /** Implements HashMap's filterImpl method, while adding each remaining element's hash to the first elem of `hashPtr`
+    *
+    * @param hashPtr a single-element int array, storing the partially computed hash of the result. It is mutated by
+    *                this method, which adds to it, the hash of each element that remains in the subtree, after the filter
+    * @return one of:
+    *           * (K, V, Int, Int), the (key, value, original hash, improved hash), if only one element from the node
+    *             passes the filter
+    *
+    *           * MapNode, if multiple elements pass the filter
+    *           * null, if no elements pass the filter
+    */
+  def filter(p: ((K, V)) => Boolean, flipped: Boolean, hashPtr: Array[Int]): AnyRef
 }
 
 private final class BitmapIndexedMapNode[K, +V](
@@ -700,6 +712,117 @@ private final class BitmapIndexedMapNode[K, +V](
     new BitmapIndexedMapNode[K, V](dataMap, nodeMap, contentClone, originalHashes.clone(), size)
   }
 
+  override def filter(p: ((K, V)) => Boolean, flipped: Boolean, hashPtr: Array[Int]) = {
+    var anyChanges: Boolean = false
+
+    var newDataMap = 0
+    var newNodeMap = 0
+    var newSize = 0
+
+    var contentBuilder: mutable.ArrayBuilder[Any] = null
+    var originalHashesBuilder: mutable.ArrayBuilder[Int] = null
+    var nodesBuilder: mutable.ListBuffer[MapNode[K, V]] = null
+
+    val allMap = dataMap | nodeMap
+    var i = Integer.numberOfTrailingZeros(allMap)
+    val i_bound = 32 - Integer.numberOfLeadingZeros(allMap)
+    var dataIndex = 0
+    var nodeIndex = 0
+
+    def ensureContentAndHashesBuilderAvailable(): Unit = {
+      if ((contentBuilder eq null) || (originalHashesBuilder eq null)) {
+        contentBuilder = Array.newBuilder[Any]
+        originalHashesBuilder = Array.newBuilder[Int]
+        var j = 0
+        while (j < dataIndex) {
+          contentBuilder.addOne(getKey(j))
+          contentBuilder.addOne(getValue(j))
+          originalHashesBuilder.addOne(getHash(j))
+          j += 1
+        }
+      }
+    }
+
+    def ensureNodesBuilderAvailable(): Unit = {
+      if (nodesBuilder eq null) {
+        nodesBuilder = mutable.ListBuffer()
+        var j = 0
+        while (j < nodeIndex) {
+          nodesBuilder.prepend(getNode(j))
+          j += 1
+        }
+      }
+    }
+
+
+    while (i < i_bound) {
+      val bitpos = Node.bitposFrom(i)
+      if ((bitpos & dataMap) != 0) {
+        val key = getKey(i)
+        val value = getValue(i)
+        val hash = getHash(i)
+        if (p((key, value)) != flipped) {
+          newDataMap |= bitpos
+          newSize += 1
+          hashPtr(0) += improve(hash)
+          if (anyChanges) {
+            ensureContentAndHashesBuilderAvailable()
+
+            contentBuilder.addOne(key)
+            contentBuilder.addOne(value)
+            originalHashesBuilder.addOne(hash)
+          }
+        } else {
+          anyChanges = true
+        }
+        dataIndex += 1
+      } else if ((bitpos & nodeMap) != 0) {
+        val oldNode = getNode(nodeIndex)
+
+        oldNode.filter(p, flipped, hashPtr) match {
+          case null =>
+            anyChanges = true
+            ensureNodesBuilderAvailable()
+          case (k, v, originalHash: Int) =>
+            anyChanges = true
+            newDataMap |= bitpos
+            newSize += 1
+            ensureContentAndHashesBuilderAvailable()
+
+            contentBuilder.addOne(k)
+            contentBuilder.addOne(v)
+            originalHashesBuilder.addOne(originalHash)
+
+          case mn: MapNode[K, V] =>
+            newNodeMap |= bitpos
+            newSize += mn.size
+            if (mn ne oldNode) {
+              anyChanges = true
+              ensureNodesBuilderAvailable()
+              nodesBuilder.prepend(mn)
+            }
+        }
+
+        nodeIndex += 1
+      }
+      i += 1
+    }
+
+    if (anyChanges) {
+      if (newDataMap == 0 && newNodeMap == 0) {
+        null
+      } else {
+
+        if (nodesBuilder ne null) {
+          nodesBuilder.foreach(contentBuilder.addOne)
+        }
+
+        new BitmapIndexedMapNode[K, V](newDataMap, newNodeMap, contentBuilder.result(), originalHashesBuilder.result(), newSize)
+      }
+    } else {
+      this
+    }
+  }
 }
 
 private final class HashCollisionMapNode[K, +V ](
@@ -825,6 +948,55 @@ private final class HashCollisionMapNode[K, +V ](
   override def hashCode(): Int =
     throw new UnsupportedOperationException("Trie nodes do not support hashing.")
 
+  override def filter(p: ((K, V)) => Boolean, flipped: Boolean, hashPtr: Array[Int]): AnyRef = {
+    var anyChanges = false
+    var contentBuilder: VectorBuilder[(K, V)] = null
+
+    val iter = content.iterator
+    var i = 0
+
+    def ensureContentBuilderAvailable(): Unit = {
+      if (contentBuilder eq null) {
+        contentBuilder = new VectorBuilder
+        var j = 0
+        while (j < i) {
+          contentBuilder.addOne(content(j))
+          j += 1
+        }
+      }
+    }
+
+    while (iter.hasNext) {
+      val next = iter.next()
+
+      if (p(next) != flipped) {
+        hashPtr(0) += hash
+        if (anyChanges) {
+          ensureContentBuilderAvailable()
+          contentBuilder.addOne(next)
+        }
+      } else {
+        anyChanges = true
+        ensureContentBuilderAvailable()
+      }
+
+      i += 1
+    }
+
+    if (anyChanges) {
+      val newContent = contentBuilder.result()
+      if (newContent.isEmpty) {
+        null
+      } else if (newContent.length == 1) {
+        val newContentHead = newContent.head
+        (newContentHead._1, newContentHead._2, originalHash)
+      } else {
+        new HashCollisionMapNode(originalHash, hash, newContent)
+      }
+    } else {
+      this
+    }
+  }
 }
 
 private final class MapKeyIterator[K, V](rootNode: MapNode[K, V])
