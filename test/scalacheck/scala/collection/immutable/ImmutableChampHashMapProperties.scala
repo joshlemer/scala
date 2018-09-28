@@ -3,11 +3,12 @@ package scala.collection.immutable
 import org.scalacheck.Arbitrary._
 import org.scalacheck.Prop.forAll
 import org.scalacheck._
+import org.scalacheck.rng.Seed
 
 object ImmutableChampHashMapProperties extends Properties("immutable.HashMap") {
 
-  type K = String
-  type V = String
+  type K = Int
+  type V = Int
   type T = (K, V)
 
   //  override def overrideParameters(p: org.scalacheck.Test.Parameters) =
@@ -124,4 +125,22 @@ object ImmutableChampHashMapProperties extends Properties("immutable.HashMap") {
     val hmb = HashMap.newBuilder[K, V].addAll(xs)
     (mb.result() eq mb.result()) && (hmb.result() eq hmb.result())
   }
+
+  val hm = HashMap(0 -> 0, 1 -> 1)
+  val f: ((K, V)) => Boolean = _._2 > 0
+  val hm2 = hm.filter(f)
+  println(hm2)
+
+//  property("xs.filter(_ => true) eq xs") = forAll { xs: HashMap[K, V] =>
+//    xs.filter(_ => true) eq xs
+//  }
+  property("filter(p) == to(List).filter(p).to(HashMap)") = forAll { (xs: HashMap[K, V], p: ((K, V)) => Boolean) =>
+    val pp: ((K, V)) => Boolean =  { case (k, v) => v > 0}
+    val expect = xs.to(List).filter(pp).to(HashMap)
+    val result = xs.filter(pp)
+    if (expect != result) {
+      println(expect + " " + result)
+    }
+    xs.filter(pp) == xs.to(List).filter(pp).to(HashMap)
+  }.useSeed("hi", Seed(1))
 }

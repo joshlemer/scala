@@ -155,11 +155,13 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
   }
 
   override def filterImpl(pred: ((K, V)) => Boolean, flipped: Boolean): HashMap[K, V] = {
-    val newHashPtr = Array(0)
-    val newRootNode = rootNode.filter(pred, flipped, newHashPtr)
-    if (newRootNode eq rootNode) this
-    else if (newRootNode eq null) HashMap.empty
-    else new HashMap[K, V](newRootNode.asInstanceOf[MapNode[K, V]], newHashPtr(0))
+    if (isEmpty) this else {
+      val newHashPtr = Array(0)
+      val newRootNode = rootNode.filter(pred, flipped, newHashPtr)
+      if (newRootNode eq rootNode) this
+      else if (newRootNode eq null) HashMap.empty
+      else new HashMap[K, V](newRootNode.asInstanceOf[MapNode[K, V]], newHashPtr(0))
+    }
   }
 
   override def removeAll(keys: IterableOnce[K]): HashMap[K, V] = {
@@ -724,8 +726,8 @@ private final class BitmapIndexedMapNode[K, +V](
     var nodesBuilder: mutable.ListBuffer[MapNode[K, V]] = null
 
     val allMap = dataMap | nodeMap
-    var i = Integer.numberOfTrailingZeros(allMap)
-    val i_bound = 32 - Integer.numberOfLeadingZeros(allMap)
+    var i = 0 //Integer.numberOfTrailingZeros(allMap)
+    val i_bound = 32 //- Integer.numberOfLeadingZeros(allMap) - 1
     var dataIndex = 0
     var nodeIndex = 0
 
@@ -758,9 +760,9 @@ private final class BitmapIndexedMapNode[K, +V](
     while (i < i_bound) {
       val bitpos = Node.bitposFrom(i)
       if ((bitpos & dataMap) != 0) {
-        val key = getKey(i)
-        val value = getValue(i)
-        val hash = getHash(i)
+        val key = getKey(dataIndex)
+        val value = getValue(dataIndex)
+        val hash = getHash(dataIndex)
         if (p((key, value)) != flipped) {
           newDataMap |= bitpos
           newSize += 1
@@ -774,6 +776,7 @@ private final class BitmapIndexedMapNode[K, +V](
           }
         } else {
           anyChanges = true
+          ensureContentAndHashesBuilderAvailable()
         }
         dataIndex += 1
       } else if ((bitpos & nodeMap) != 0) {
@@ -813,11 +816,18 @@ private final class BitmapIndexedMapNode[K, +V](
         null
       } else {
 
+        var newContent: Array[Any] = null
         if (nodesBuilder ne null) {
-          nodesBuilder.foreach(contentBuilder.addOne)
+          if (contentBuilder eq null) {
+            newContent = nodesBuilder.toArray.asInstanceOf[Array[Any]]
+          } else {
+            nodesBuilder.foreach(contentBuilder.addOne)
+            newContent = contentBuilder.result()
+          }
         }
+        val newOriginalHashes = if (originalHashesBuilder eq null) Array[Int]() else originalHashesBuilder.result()
 
-        new BitmapIndexedMapNode[K, V](newDataMap, newNodeMap, contentBuilder.result(), originalHashesBuilder.result(), newSize)
+        new BitmapIndexedMapNode[K, V](newDataMap, newNodeMap, newContent, newOriginalHashes, newSize)
       }
     } else {
       this
