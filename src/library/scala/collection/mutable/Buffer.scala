@@ -19,7 +19,7 @@ trait Buffer[A]
   extends Seq[A]
     with SeqOps[A, Buffer, Buffer[A]]
     with Growable[A]
-    with Shrinkable[A] {
+    with ShrinkableIterable[A, A] {
 
   override def iterableFactory: SeqFactory[Buffer] = Buffer
 

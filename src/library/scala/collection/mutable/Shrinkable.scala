@@ -14,6 +14,7 @@ package scala
 package collection.mutable
 
 import scala.annotation.tailrec
+import scala.collection.IterableOnceOps
 
 /** This trait forms part of collections that can be reduced
   *  using a `-=` operator.
@@ -70,4 +71,40 @@ trait Shrinkable[-A] {
   /** Alias for `subtractAll` */
   @`inline` final def --= (xs: collection.IterableOnce[A]): this.type = subtractAll(xs)
 
+}
+
+trait ShrinkableIterable[A, B] extends Iterable[B] with Shrinkable[A] {
+  private[this] val DEFAULT_BATCH_SIZE = 5
+
+
+  def oldSubtractAll(xs: IterableOnce[A]): this.type = {
+    super.subtractAll(xs)
+  }
+
+  override def subtractAll(xs: IterableOnce[A]): this.type = {
+    xs match {
+      case xs: collection.LinearSeq[A] =>
+        var curr = xs
+        while (curr.nonEmpty && knownSize != 0) {
+          var i = 0
+          while (i < 100 && curr.nonEmpty) {
+            subtractOne(curr.head)
+            curr = curr.tail
+            i += 1
+          }
+        }
+        this
+
+      case _ =>
+        val iter = xs.iterator
+        while (iter.hasNext && knownSize != 0) {
+          var i = 0
+          while (i < 100 && iter.hasNext) {
+            subtractOne(iter.next())
+            i += 1
+          }
+        }
+        this
+    }
+  }
 }

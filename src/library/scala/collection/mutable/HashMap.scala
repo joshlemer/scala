@@ -13,7 +13,8 @@
 package scala
 package collection.mutable
 
-import scala.collection.{Iterator, MapFactory, StrictOptimizedIterableOps, StrictOptimizedMapOps}
+import scala.annotation.switch
+import scala.collection.{Iterator, MapFactory, StrictOptimizedIterableOps, StrictOptimizedMapOps, mutable}
 
 /** This class implements mutable maps using a hashtable.
   *

@@ -14,12 +14,8 @@ package scala
 package collection
 package immutable
 
-import collection.Iterator
-
 import scala.annotation.tailrec
 import scala.annotation.meta.getter
-
-import java.lang.{Integer, String}
 
 /** An object containing the RedBlack tree implementation used by for `TreeMaps` and `TreeSets`.
   *

@@ -22,7 +22,7 @@ trait Map[K, V]
     with collection.Map[K, V]
     with MapOps[K, V, Map, Map[K, V]]
     with Growable[(K, V)]
-    with Shrinkable[K] {
+    with ShrinkableIterable[K, (K, V)] {
 
   override def mapFactory: scala.collection.MapFactory[MapCC] = Map
 

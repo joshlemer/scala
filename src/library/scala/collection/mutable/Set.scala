@@ -19,7 +19,8 @@ import scala.language.higherKinds
 trait Set[A]
   extends Iterable[A]
     with collection.Set[A]
-    with SetOps[A, Set, Set[A]] {
+    with SetOps[A, Set, Set[A]]
+    with ShrinkableIterable[A, A] {
 
   override def iterableFactory: IterableFactory[IterableCC] = Set
 }
