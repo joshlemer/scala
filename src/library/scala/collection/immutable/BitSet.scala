@@ -58,7 +58,7 @@ sealed abstract class BitSet
     } else this
   }
 
-  def oldRemoveAll(that: IterableOnce[Int]) = super.removeAll(that)
+//  def oldRemoveAll(that: IterableOnce[Int]) = super.removeAll(that)
 
   /** Update word at index `idx`; enlarge set if `idx` outside range of set.
     */
@@ -94,10 +94,10 @@ object BitSet extends SpecificIterableFactory[Int, BitSet] {
   def fromSpecific(it: scala.collection.IterableOnce[Int]): BitSet =
     it match {
       case bs: BitSet => bs
-      case _          => (newBuilder ++= it).result()
+      case _ => (newBuilder ++= it).result()
     }
 
-  def empty: BitSet = new BitSet1(0L)
+  final val empty: BitSet = new BitSet1(0L)
 
   def newBuilder: Builder[Int, BitSet] =
     mutable.BitSet.newBuilder.mapResult(bs => fromBitMaskNoCopy(bs.elems))
@@ -117,7 +117,7 @@ object BitSet extends SpecificIterableFactory[Int, BitSet] {
   }
 
   /** A bitset containing all the bits in an array, wrapping the existing
-    *  array without copying.
+    * array without copying.
     */
   def fromBitMaskNoCopy(elems: Array[Long]): BitSet = {
     val len = elems.length
@@ -134,6 +134,16 @@ object BitSet extends SpecificIterableFactory[Int, BitSet] {
       if (idx == 0) new BitSet1(w)
       else if (idx == 1) createSmall(elems, w)
       else fromBitMaskNoCopy(updateArray(Array(elems), idx, w))
+
+    override def diff(other: collection.Set[Int]): BitSet = other match {
+      case bs: collection.BitSet => bs.nwords match {
+        case 0 => this
+        case _ =>
+          val newElems = elems & ~bs.word(0)
+          if (newElems == 0L) empty else new BitSet1(newElems)
+      }
+      case _ => super.diff(other)
+    }
   }
 
   class BitSet2(val elems0: Long, elems1: Long) extends BitSet {
@@ -143,6 +153,15 @@ object BitSet extends SpecificIterableFactory[Int, BitSet] {
       if (idx == 0) new BitSet2(w, elems1)
       else if (idx == 1) createSmall(elems0, w)
       else fromBitMaskNoCopy(updateArray(Array(elems0, elems1), idx, w))
+
+    override def diff(other: collection.Set[Int]): BitSet = other match {
+      case bs: collection.BitSet => bs.nwords match {
+        case 0 => this
+        case 1 => new BitSet2(elems0 & ~bs.word(0), elems1)
+        case _ => new BitSet2(elems0 & ~bs.word(0), elems1 & ~bs.word(1))
+      }
+      case _ => super.diff(other)
+    }
   }
 
   class BitSetN(val elems: Array[Long]) extends BitSet {
@@ -150,9 +169,8 @@ object BitSet extends SpecificIterableFactory[Int, BitSet] {
     protected[collection] def word(idx: Int) = if (idx < nwords) elems(idx) else 0L
     protected[collection] def updateWord(idx: Int, w: Long): BitSet = fromBitMaskNoCopy(updateArray(elems, idx, w))
 
-    override def removeAll(that: IterableOnce[Int]): BitSet = that match {
+    override def diff(that: collection.Set[Int]): BitSet = that match {
       case bs: collection.BitSet =>
-//        ???
         val bsnwords = bs.nwords
         val thisnwords = nwords
         if (bsnwords >= thisnwords) {
@@ -227,7 +245,7 @@ object BitSet extends SpecificIterableFactory[Int, BitSet] {
             this
           }
         }
-      case _ => super.removeAll(that)
+      case _ => super.diff(that)
     }
   }
 
@@ -235,4 +253,6 @@ object BitSet extends SpecificIterableFactory[Int, BitSet] {
   private final class SerializationProxy(coll: BitSet) extends scala.collection.BitSet.SerializationProxy(coll) {
     protected[this] def readResolve(): Any = BitSet.fromBitMaskNoCopy(elems)
   }
+
+
 }

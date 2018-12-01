@@ -1,12 +1,10 @@
 package scala.collection.immutable
 
 import java.util.concurrent.TimeUnit
-import java.util.Arrays
 
 import org.openjdk.jmh.annotations._
 import org.openjdk.jmh.infra.Blackhole
 
-import scala.reflect.ClassTag
 import scala.util.Random
 
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -38,7 +36,6 @@ class BitSetBenchmark {
   @Benchmark
   def oldRemoveAll(bh: Blackhole): Unit = {
     (1 to 10) foreach { _ =>
-      bh.consume(bitSet.oldRemoveAll(arg))
     }
   }
 

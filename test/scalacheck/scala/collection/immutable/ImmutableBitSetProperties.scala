@@ -17,7 +17,6 @@ object ImmutableBitSetProperties extends Properties("immutable.BitSet") {
 
     if (left.removeAll(right) != left.to(HashSet).removeAll(right.to(HashSet))) {
       val a = left.removeAll(right)
-      val a = left.diff(right)
       val b = left.to(HashSet).removeAll(right.to(HashSet))
         false
     } else true
