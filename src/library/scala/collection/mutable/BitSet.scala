@@ -107,7 +107,7 @@ class BitSet(protected[collection] final var elems: Array[Long])
     *  @param   other  the bitset to form the union with.
     *  @return  the bitset itself.
     */
-  def |= (other: BitSet): this.type = {
+  def |= (other: collection.BitSet): this.type = {
     ensureCapacity(other.nwords - 1)
     for (i <- Range(0, other.nwords))
       elems(i) = elems(i) | other.word(i)
@@ -118,7 +118,7 @@ class BitSet(protected[collection] final var elems: Array[Long])
     *  @param   other  the bitset to form the intersection with.
     *  @return  the bitset itself.
     */
-  def &= (other: BitSet): this.type = {
+  def &= (other: collection.BitSet): this.type = {
     // Different from other operations: no need to ensure capacity because
     // anything beyond the capacity is 0.  Since we use other.word which is 0
     // off the end, we also don't need to make sure we stay in bounds there.
@@ -131,7 +131,7 @@ class BitSet(protected[collection] final var elems: Array[Long])
     *  @param   other  the bitset to form the symmetric difference with.
     *  @return  the bitset itself.
     */
-  def ^= (other: BitSet): this.type = {
+  def ^= (other: collection.BitSet): this.type = {
     ensureCapacity(other.nwords - 1)
     for (i <- Range(0, other.nwords))
       elems(i) = elems(i) ^ other.word(i)
@@ -173,9 +173,54 @@ class BitSet(protected[collection] final var elems: Array[Long])
   override def zip[B](that: IterableOnce[B])(implicit @implicitNotFound(collection.BitSet.zipOrdMsg) ev: Ordering[(Int, B)]): SortedSet[(Int, B)] =
     super.zip(that)
 
+  override def addAll(xs: IterableOnce[Int]): this.type = xs match {
+    case bs: collection.BitSet => this |= bs
+    case _ => super.addAll(xs)
+  }
+
   override def subtractAll(xs: IterableOnce[Int]): this.type = xs match {
     case bs: collection.BitSet => this &~= bs
     case _ => super.subtractAll(xs)
+  }
+
+  override def filterImpl(pred: Int => Boolean, isFlipped: Boolean): BitSet = {
+    // We filter the BitSet from highest to lowest, so we can determine exactly the highest non-zero word
+    // index which lets us avoid:
+    // * over-allocating -- the resulting array will be exactly the right size
+    // * multiple resizing allocations -- the array is allocated one time, not log(n) times.
+
+    var i = nwords - 1
+    var newArray: Array[Long] = _
+    while (i >= 0) {
+      var w = word(i)
+      var jmask = 1L << java.lang.Long.numberOfTrailingZeros(w)
+      var j = i * BitSetOps.WordLength
+      while (jmask != 0) {
+        if ((w & jmask) != 0L) {
+          if (pred(j) == isFlipped) {
+            // j did not pass the filter here
+            w = w & ~jmask
+          }
+        }
+
+        jmask = jmask << 1
+        j += 1
+      }
+
+      if (w != 0L) {
+        if (newArray ne null) {
+          newArray = new Array(i + 1)
+        }
+        newArray(i) = w
+      }
+      i -= 1
+    }
+
+    if (newArray eq null) {
+      empty
+    } else {
+      fromBitMaskNoCopy(newArray)
+    }
   }
 
   override protected[this] def writeReplace(): AnyRef = new BitSet.SerializationProxy(this)
