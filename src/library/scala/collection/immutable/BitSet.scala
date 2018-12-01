@@ -60,7 +60,6 @@ sealed abstract class BitSet
 
   def oldRemoveAll(that: IterableOnce[Int]) = super.removeAll(that)
 
-
   /** Update word at index `idx`; enlarge set if `idx` outside range of set.
     */
   protected def updateWord(idx: Int, w: Long): BitSet
@@ -153,6 +152,7 @@ object BitSet extends SpecificIterableFactory[Int, BitSet] {
 
     override def removeAll(that: IterableOnce[Int]): BitSet = that match {
       case bs: collection.BitSet =>
+//        ???
         val bsnwords = bs.nwords
         val thisnwords = nwords
         if (bsnwords >= thisnwords) {
@@ -160,12 +160,12 @@ object BitSet extends SpecificIterableFactory[Int, BitSet] {
           // so, track the highest index which is non-zero. That ( + 1 ) will be our new array length
           var i = thisnwords - 1
 
-          var currentWord = -1L
+          var currentWord = 0L
 
           // if there are never any changes, we can return `this` at the end
           var anyChanges = false
 
-          while (i >= 0 && currentWord != 0L) {
+          while (i >= 0 && currentWord == 0L) {
             val oldWord = word(i)
             currentWord = oldWord & ~bs.word(i)
             anyChanges ||= currentWord != oldWord
@@ -182,7 +182,7 @@ object BitSet extends SpecificIterableFactory[Int, BitSet] {
             while (!anyChanges && i >= 0) {
               val oldWord = word(i)
               currentWord = oldWord & ~bs.word(i)
-              anyChanges &&= currentWord != oldWord
+              anyChanges ||= currentWord != oldWord
               i -= 1
             }
 

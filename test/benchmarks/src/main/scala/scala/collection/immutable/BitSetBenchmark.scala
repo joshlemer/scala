@@ -25,8 +25,8 @@ class BitSetBenchmark {
   var arg: BitSet = _
 
   @Setup(Level.Iteration) def initNumbers: Unit = {
-    arg = (1 to size / 10).map(_ => Random.nextInt(size)).to(BitSet)
-    bitSet = (1 to size / 10).map(_ => Random.nextInt(size)).to(BitSet)
+    arg = (1 to size / 3).map(_ => Random.nextInt(size)).to(BitSet)
+    bitSet = (1 to size / 3).map(_ => Random.nextInt(size)).to(BitSet)
   }
 
   @Benchmark
