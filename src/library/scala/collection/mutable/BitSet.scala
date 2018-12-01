@@ -14,8 +14,6 @@ package scala
 package collection
 package mutable
 
-import java.io.{ObjectInputStream, ObjectOutputStream}
-
 import scala.collection.immutable.Range
 import BitSetOps.{LogWL, MaxSize}
 import scala.annotation.implicitNotFound
@@ -132,21 +130,40 @@ class BitSet(protected[collection] final var elems: Array[Long])
     *  @return  the bitset itself.
     */
   def ^= (other: BitSet): this.type = {
+    val newCapacity = other.nwords - 1
+    max
     ensureCapacity(other.nwords - 1)
+
     for (i <- Range(0, other.nwords))
       elems(i) = elems(i) ^ other.word(i)
     this
   }
+
+  def old_&~= (other: BitSet): this.type = {
+    ensureCapacity(other.nwords - 1)
+    for (i <- Range(0, other.nwords))
+      elems(i) = elems(i) & ~other.word(i)
+    this
+  }
+
   /** Updates this bitset to the difference with another bitset by performing a bitwise "and-not".
     *
     *  @param   other  the bitset to form the difference with.
     *  @return  the bitset itself.
     */
-  def &~= (other: BitSet): this.type = {
-    ensureCapacity(other.nwords - 1)
-    for (i <- Range(0, other.nwords))
+  def &~= (other: collection.BitSet): this.type = {
+    var i = 0
+    val max = Math.min(nwords, other.nwords)
+    while (i < max) {
       elems(i) = elems(i) & ~other.word(i)
+      i += 1
+    }
     this
+  }
+
+  override def subtractAll(xs: IterableOnce[Int]): this.type = xs match {
+    case bs: collection.BitSet => this &~= bs
+    case xs => super.subtractAll(xs)
   }
 
   override def clone(): BitSet =
