@@ -142,10 +142,13 @@ class BitSet(protected[collection] final var elems: Array[Long])
     *  @param   other  the bitset to form the difference with.
     *  @return  the bitset itself.
     */
-  def &~= (other: BitSet): this.type = {
-    ensureCapacity(other.nwords - 1)
-    for (i <- Range(0, other.nwords))
+  def &~= (other: collection.BitSet): this.type = {
+    val words = Math.min(nwords, other.nwords)
+    var i = 0
+    while (i < words) {
       elems(i) = elems(i) & ~other.word(i)
+      i += 1
+    }
     this
   }
 
@@ -169,6 +172,11 @@ class BitSet(protected[collection] final var elems: Array[Long])
   // necessary for disambiguation
   override def zip[B](that: IterableOnce[B])(implicit @implicitNotFound(collection.BitSet.zipOrdMsg) ev: Ordering[(Int, B)]): SortedSet[(Int, B)] =
     super.zip(that)
+
+  override def subtractAll(xs: IterableOnce[Int]): this.type = xs match {
+    case bs: collection.BitSet => this &~= bs
+    case _ => super.subtractAll(xs)
+  }
 
   override protected[this] def writeReplace(): AnyRef = new BitSet.SerializationProxy(this)
 }

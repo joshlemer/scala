@@ -75,7 +75,16 @@ trait SetOps[A, +CC[X], +C <: SetOps[A, CC, C]]
     *  @param that the collection containing the elements to remove.
     *  @return a new $coll with the given elements removed, omitting duplicates.
     */
-  def removeAll(that: IterableOnce[A]): C = that.iterator.foldLeft[C](coll)(_ - _)
+  def removeAll(that: IterableOnce[A]): C = that match {
+    case set: collection.Set[A] => diff(set)
+    case _ =>
+      val iter = that.iterator
+      var curr: C = coll
+      while(iter.hasNext && knownSize != 0) {
+        curr = curr - iter.next()
+      }
+      curr
+  }
 
   /** Alias for removeAll */
   @deprecatedOverriding("This method should be final, but is not due to scala/bug#10853", "2.13.0")
