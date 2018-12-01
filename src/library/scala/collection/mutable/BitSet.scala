@@ -130,10 +130,7 @@ class BitSet(protected[collection] final var elems: Array[Long])
     *  @return  the bitset itself.
     */
   def ^= (other: BitSet): this.type = {
-    val newCapacity = other.nwords - 1
-    max
     ensureCapacity(other.nwords - 1)
-
     for (i <- Range(0, other.nwords))
       elems(i) = elems(i) ^ other.word(i)
     this
