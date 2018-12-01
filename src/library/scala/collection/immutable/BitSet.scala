@@ -14,8 +14,6 @@ package scala
 package collection
 package immutable
 
-import java.io.{ObjectInputStream, ObjectOutputStream}
-
 import BitSetOps.{LogWL, updateArray}
 import mutable.Builder
 import scala.annotation.implicitNotFound
@@ -59,6 +57,9 @@ sealed abstract class BitSet
       updateWord(idx, word(idx) & ~(1L << elem))
     } else this
   }
+
+  def oldRemoveAll(that: IterableOnce[Int]) = super.removeAll(that)
+
 
   /** Update word at index `idx`; enlarge set if `idx` outside range of set.
     */
@@ -149,6 +150,85 @@ object BitSet extends SpecificIterableFactory[Int, BitSet] {
     protected[collection] def nwords = elems.length
     protected[collection] def word(idx: Int) = if (idx < nwords) elems(idx) else 0L
     protected[collection] def updateWord(idx: Int, w: Long): BitSet = fromBitMaskNoCopy(updateArray(elems, idx, w))
+
+    override def removeAll(that: IterableOnce[Int]): BitSet = that match {
+      case bs: collection.BitSet =>
+        val bsnwords = bs.nwords
+        val thisnwords = nwords
+        if (bsnwords >= thisnwords) {
+          // here, we may have opportunity to shrink the size of the array
+          // so, track the highest index which is non-zero. That ( + 1 ) will be our new array length
+          var i = thisnwords - 1
+
+          var currentWord = -1L
+
+          // if there are never any changes, we can return `this` at the end
+          var anyChanges = false
+
+          while (i >= 0 && currentWord != 0L) {
+            val oldWord = word(i)
+            currentWord = oldWord & ~bs.word(i)
+            anyChanges ||= currentWord != oldWord
+            i -= 1
+          }
+
+          if (i < 0) {
+            // all indices >= 0 have had result 0, so the bitset is empty
+            BitSet.empty
+          } else {
+
+            val minimumNonZeroIndex: Int = i + 1
+
+            while (!anyChanges && i >= 0) {
+              val oldWord = word(i)
+              currentWord = oldWord & ~bs.word(i)
+              anyChanges &&= currentWord != oldWord
+              i -= 1
+            }
+
+            if (anyChanges) {
+              val newArray = elems.take(minimumNonZeroIndex + 1)
+              newArray(i + 1) = currentWord
+              while (i >= 0) {
+                newArray(i) = word(i) & ~bs.word(i)
+                i -= 1
+              }
+              fromBitMaskNoCopy(newArray)
+            } else {
+              this
+            }
+          }
+
+        } else {
+          // here, there is no opportunity to shrink the array size, no use in tracking highest non-zero index
+          // however, we may still share structure (the array) if no changes are made
+          var i = bsnwords - 1
+
+          var anyChanges = false
+          var currentWord = 0L
+
+          while (i >= 0 && !anyChanges) {
+            val oldWord = word(i)
+            currentWord = oldWord & ~bs.word(i)
+            anyChanges ||= currentWord != oldWord
+            i -= 1
+          }
+
+          if (anyChanges) {
+            val newElems = elems.clone()
+            newElems(i + 1) = currentWord
+
+            while (i >= 0) {
+              newElems(i) = word(i) & ~bs.word(i)
+              i -= 1
+            }
+            fromBitMaskNoCopy(newElems)
+          } else {
+            this
+          }
+        }
+      case _ => super.removeAll(that)
+    }
   }
 
   @SerialVersionUID(3L)
