@@ -1341,6 +1341,7 @@ private[immutable] final class HashMapBuilder[K, V] extends Builder[(K, V), Hash
   import Node._
   import MapNode._
 
+
   private def newEmptyRootNode = new BitmapIndexedMapNode[K, V](0, 0, Array(), Array(), 0, 0)
 
   /** The last given out HashMap as a return value of `result()`, if any, otherwise null.
@@ -1352,6 +1353,13 @@ private[immutable] final class HashMapBuilder[K, V] extends Builder[(K, V), Hash
 
   /** The root node of the partially build hashmap */
   private var rootNode: MapNode[K, V] = newEmptyRootNode
+
+  private[immutable] def getOrElseNull(key: K): V =
+    if (rootNode.size == 0) null.asInstanceOf[V]
+    else {
+      val originalHash = key.##
+      rootNode.getOrElse(key, originalHash, improve(originalHash), 0, null).asInstanceOf[V]
+    }
 
   /** Inserts element `elem` into array `as` at index `ix`, shifting right the trailing elems */
   private def insertElement(as: Array[Int], ix: Int, elem: Int): Array[Int] = {
