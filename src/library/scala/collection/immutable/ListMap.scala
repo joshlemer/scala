@@ -175,19 +175,19 @@ object ListMap extends MapFactory[ListMap] {
       var i = 0
       var found = false
       var curr: ListMap[K, V] = this
-      while (curr.nonEmpty) {
+      while (curr.nonEmpty && !found) {
         if (curr.key == k) {
           found = true
           return {
             if (curr.value.asInstanceOf[AnyRef] eq value.asInstanceOf[AnyRef]) this
-            else replaceAtIndexWith(i, new Node(k, value, curr.next))
+            else replaceAtIndexWith(i, new Node(k, v, curr.next))
           }
         }
         curr = curr.next
         i += 1
       }
 
-      this
+      new Node(k, v, this)
     }
 
     override def removed(k: K): ListMap[K, V] = removeInternal(k, this, Nil)
