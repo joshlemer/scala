@@ -16,9 +16,11 @@ package collection.immutable
 import java.io.{ObjectInputStream, ObjectOutputStream}
 import java.lang.Integer.bitCount
 import java.lang.System.arraycopy
+import java.util
 
 import scala.annotation.unchecked.{uncheckedVariance => uV}
 import scala.collection.Hashing.improve
+import scala.collection.convert.Wrappers.JMapWrapper
 import scala.collection.mutable.Builder
 import scala.collection.{Iterator, MapFactory, StrictOptimizedIterableOps, StrictOptimizedMapOps}
 import scala.util.hashing.MurmurHash3
@@ -1534,6 +1536,7 @@ private[immutable] final class HashMapBuilder[K, V] extends Builder[(K, V), Hash
       case other =>
         val it = other.iterator
         while(it.hasNext) addOne(it.next())
+
     }
 
     this

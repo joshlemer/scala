@@ -33,7 +33,7 @@ class ListMapTest {
   def hasCorrectAddRemove(): Unit = {
     val m = ListMap(1 -> 1, 2 -> 2, 3 -> 3)
     assertEquals(ListMap(1 -> 1, 2 -> 2, 3 -> 3, 4 -> 4), m + (4 -> 4))
-    assertEquals(ListMap(1 -> 1, 3 -> 3, 2 -> 4), m + (2 -> 4))
+    assertEquals(ListMap(1 -> 1, 2 -> 4, 3 -> 3), m + (2 -> 4))
     assertEquals(ListMap(1 -> 1, 2 -> 2, 3 -> 3), m + (2 -> 2))
     assertEquals(ListMap(2 -> 2, 3 -> 3), m - 1)
     assertEquals(ListMap(1 -> 1, 3 -> 3), m - 2)

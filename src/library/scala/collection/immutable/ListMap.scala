@@ -147,7 +147,47 @@ object ListMap extends MapFactory[ListMap] {
       else containsInternal(cur.next, k)
 
     override def updated[V1 >: V](k: K, v: V1): ListMap[K, V1] = {
-      new Node[K, V1](k, v, this - k)
+      def replaceAtIndexWith(ind: Int, node: Node[K, V1]): ListMap[K, V1] = {
+        if (ind == 0) {
+          node
+        } else {
+          // duplicate all nodes up to but not including the replaced node
+          var prev: ListMap.Node[K, V1] = new Node(key, value, null)
+
+          // keep pointer to the head of the new chain
+          val newListMap: ListMap.Node[K, V1] = prev
+
+          var curr: ListMap[K, V1] = _init
+
+          var i = 1
+          while(i < ind) {
+            val newNode = new Node(curr.key, curr.value, null)
+            prev._init = newNode
+            prev = newNode
+            curr = curr.next
+            i += 1
+          }
+          prev._init = node
+          newListMap
+        }
+      }
+
+      var i = 0
+      var found = false
+      var curr: ListMap[K, V] = this
+      while (curr.nonEmpty) {
+        if (curr.key == k) {
+          found = true
+          return {
+            if (curr.value.asInstanceOf[AnyRef] eq value.asInstanceOf[AnyRef]) this
+            else replaceAtIndexWith(i, new Node(k, value, curr.next))
+          }
+        }
+        curr = curr.next
+        i += 1
+      }
+
+      this
     }
 
     override def removed(k: K): ListMap[K, V] = removeInternal(k, this, Nil)
