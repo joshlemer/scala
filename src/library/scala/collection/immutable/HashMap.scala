@@ -1513,22 +1513,29 @@ private[immutable] final class HashMapBuilder[K, V] extends Builder[(K, V), Hash
     this
   }
 
+
   override def addAll(xs: IterableOnce[(K, V)]) = {
     ensureUnaliased()
     xs match {
       case hm: HashMap[K, V] =>
-        new ChampBaseIterator(hm.rootNode) {
-          while(hasNext) {
-            val originalHash = currentValueNode.getHash(currentValueCursor)
-            update(
-              mapNode = rootNode,
-              key = currentValueNode.getKey(currentValueCursor),
-              value = currentValueNode.getValue(currentValueCursor),
-              originalHash = originalHash,
-              keyHash = improve(originalHash),
-              shift = 0
-            )
-            currentValueCursor += 1
+        if (hm.nonEmpty) {
+          if (rootNode.size == 0) {
+            aliased = hm
+          } else {
+            new ChampBaseIterator(hm.rootNode) {
+              while (hasNext) {
+                val originalHash = currentValueNode.getHash(currentValueCursor)
+                update(
+                  mapNode = rootNode,
+                  key = currentValueNode.getKey(currentValueCursor),
+                  value = currentValueNode.getValue(currentValueCursor),
+                  originalHash = originalHash,
+                  keyHash = improve(originalHash),
+                  shift = 0
+                )
+                currentValueCursor += 1
+              }
+            }
           }
         }
       case other =>

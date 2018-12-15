@@ -968,18 +968,24 @@ private[collection] final class HashSetBuilder[A] extends Builder[A, HashSet[A]]
   override def addAll(xs: IterableOnce[A]) = {
     ensureUnaliased()
     xs match {
-      case hm: HashSet[A] =>
-        new ChampBaseIterator(hm.rootNode) {
-          while(hasNext) {
-            val originalHash = currentValueNode.getHash(currentValueCursor)
-            update(
-              setNode = rootNode,
-              element = currentValueNode.getPayload(currentValueCursor),
-              originalHash = originalHash,
-              elementHash = improve(originalHash),
-              shift = 0
-            )
-            currentValueCursor += 1
+      case hs: HashSet[A] =>
+        if (hs.nonEmpty) {
+          if (rootNode.size == 0) {
+            aliased = hs
+          } else {
+            new ChampBaseIterator(hs.rootNode) {
+              while (hasNext) {
+                val originalHash = currentValueNode.getHash(currentValueCursor)
+                update(
+                  setNode = rootNode,
+                  element = currentValueNode.getPayload(currentValueCursor),
+                  originalHash = originalHash,
+                  elementHash = improve(originalHash),
+                  shift = 0
+                )
+                currentValueCursor += 1
+              }
+            }
           }
         }
       case other =>
