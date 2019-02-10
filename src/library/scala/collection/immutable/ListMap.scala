@@ -43,50 +43,19 @@ import scala.runtime.Statics.releaseFence
   * @define mayNotTerminateInf
   * @define willNotTerminateInf
   */
-sealed class ListMap[K, +V]
+sealed abstract class ListMap[K, +V]
   extends AbstractMap[K, V]
     with SeqMap[K, V]
     with StrictOptimizedMapOps[K, V, ListMap, ListMap[K, V]]
     with DefaultSerializable {
 
+  override protected[this] def className = "ListMap"
+
   override def mapFactory: MapFactory[ListMap] = ListMap
 
-  override def size: Int = 0
-
-  override def isEmpty: Boolean = true
-
-  override def knownSize: Int = 0
-  def get(key: K): Option[V] = None
-
-  def updated[V1 >: V](key: K, value: V1): ListMap[K, V1] = new ListMap.Node[K, V1](key, value, this)
-
-  def removed(key: K): ListMap[K, V] = this
-
-  def iterator: Iterator[(K, V)] = {
-    var curr: ListMap[K, V] = this
-    var res: List[(K, V)] = Nil
-    while (curr.nonEmpty) {
-      res = (curr.key, curr.value) :: res
-      curr = curr.next
-    }
-    res.iterator
-  }
-
-  override def keys: Iterable[K] = {
-    var curr: ListMap[K, V] = this
-    var res: List[K] = Nil
-    while (curr.nonEmpty) {
-      res = curr.key :: res
-      curr = curr.next
-    }
-    res
-  }
-
-  private[immutable] def key: K = throw new NoSuchElementException("key of empty map")
-  private[immutable] def value: V = throw new NoSuchElementException("value of empty map")
-  private[immutable] def next: ListMap[K, V] = throw new NoSuchElementException("next of empty map")
-
-  override protected[this] def className = "ListMap"
+  private[immutable] def key: K
+  private[immutable] def value: V
+  private[immutable] def next: ListMap[K, V]
 
 }
 
@@ -213,11 +182,45 @@ object ListMap extends MapFactory[ListMap] {
     override def last: (K, V) = (key, value)
     override def init: ListMap[K, V] = next
 
+    override def iterator: Iterator[(K, V)] = {
+      var curr: ListMap[K, V] = this
+      var res: List[(K, V)] = Nil
+      while (curr.nonEmpty) {
+        res = (curr.key, curr.value) :: res
+        curr = curr.next
+      }
+      res.iterator
+    }
+
+    override def keys: Iterable[K] = {
+      var curr: ListMap[K, V] = this
+      var res: List[K] = Nil
+      while (curr.nonEmpty) {
+        res = curr.key :: res
+        curr = curr.next
+      }
+      res
+    }
+
   }
 
   def empty[K, V]: ListMap[K, V] = EmptyListMap.asInstanceOf[ListMap[K, V]]
 
-  private object EmptyListMap extends ListMap[Any, Nothing]
+  private object EmptyListMap extends ListMap[Any, Nothing] {
+    override def size: Int = 0
+    override def isEmpty: Boolean = true
+    override def knownSize: Int = 0
+    def get(key: Any): Option[Nothing] = None
+    def updated[V1 >: Nothing](key: Any, value: V1): ListMap[Any, V1] = new ListMap.Node[Any, V1](key, value, this)
+    def removed(key: Any): ListMap[Any, Nothing] = this
+
+    override def iterator: Iterator[(Any, Nothing)] = Iterator.empty
+    override def keys: Iterable[Any] = Iterable.empty
+
+    private[immutable] def key: Any = throw new NoSuchElementException("key of empty map")
+    private[immutable] def value: Nothing = throw new NoSuchElementException("value of empty map")
+    private[immutable] def next: ListMap[Any, Nothing] = throw new NoSuchElementException("next of empty map")
+  }
 
   def from[K, V](it: collection.IterableOnce[(K, V)]): ListMap[K, V] =
     it match {

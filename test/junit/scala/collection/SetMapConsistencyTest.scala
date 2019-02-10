@@ -152,7 +152,7 @@ class SetMapConsistencyTest {
   
   def boxIjm = new BoxImmutableMap[Long, ci.LongMap[Int]](ci.LongMap.empty[Int], "immutable.LongMap")
   
-  def boxIlm[A] = new BoxImmutableMap[A, ci.ListMap[A, Int]](new ci.ListMap[A, Int], "immutable.ListMap")
+  def boxIlm[A] = new BoxImmutableMap[A, ci.ListMap[A, Int]](ci.ListMap.empty[A, Int], "immutable.ListMap")
   
   def boxItm[A: Ordering] = new BoxImmutableMap[A, ci.TreeMap[A, Int]](new ci.TreeMap[A, Int], "immutable.TreeMap")
     
