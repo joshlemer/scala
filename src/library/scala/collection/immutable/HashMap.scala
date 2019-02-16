@@ -317,6 +317,7 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
 }
 
 private[immutable] object MapNode {
+  import Node._
 
   private final val EmptyMapNode = new BitmapIndexedMapNode(0, 0, Array.empty, Array.empty, 0, 0)
 
@@ -324,6 +325,58 @@ private[immutable] object MapNode {
 
   final val TupleLength = 2
 
+  /** Creates a MapNode with exactly two key-value pairs.
+    *
+    * key0/key1 order is not important, but this requires that !(key0 == key1)
+    *
+    * Also requires that the last `shift` bits of keyHash0 and keyHash1 are the same.
+    *
+    * @param key0 first key-value pair's key
+    * @param value0 first key-value pair's value
+    * @param originalHash0 `key0.##`
+    * @param keyHash0 improved hash of `originalHash0`
+    * @param key1 second key-value pair's key
+    * @param value1 second key-value pair's value
+    * @param originalHash1 `key1.##`
+    * @param keyHash1 improved hash of `originalHash1`
+    * @param shift (depth of node to create) * BitPartitionSize
+    */
+  def mergeTwoKeyValPairs[K, V](
+    key0: K,
+    value0: V,
+    originalHash0: Int,
+    keyHash0: Int,
+    key1: K,
+    value1: V,
+    originalHash1: Int,
+    keyHash1: Int,
+    shift: Int): MapNode[K, V] = {
+    // assert(key0 != key1)
+
+    if (shift >= HashCodeLength) {
+      new HashCollisionMapNode[K, V](originalHash0, keyHash0, Vector((key0, value0), (key1, value1)))
+    } else {
+      val mask0 = maskFrom(keyHash0, shift)
+      val mask1 = maskFrom(keyHash1, shift)
+      val newCachedHash = keyHash0 + keyHash1
+
+      if (mask0 != mask1) {
+        // unique prefixes, payload fits on same level
+        val dataMap = bitposFrom(mask0) | bitposFrom(mask1)
+
+        if (mask0 < mask1) {
+          new BitmapIndexedMapNode[K, V](dataMap, 0, Array(key0, value0, key1, value1), Array(originalHash0, originalHash1), 2, newCachedHash)
+        } else {
+          new BitmapIndexedMapNode[K, V](dataMap, 0, Array(key1, value1, key0, value0), Array(originalHash1, originalHash0), 2, newCachedHash)
+        }
+      } else {
+        // identical prefixes, payload must be disambiguated deeper in the trie
+        val nodeMap = bitposFrom(mask0)
+        val node = mergeTwoKeyValPairs(key0, value0, originalHash0, keyHash0, key1, value1, originalHash1, keyHash1, shift + BitPartitionSize)
+        new BitmapIndexedMapNode[K, V](0, nodeMap, Array(node), Array(), node.size, node.cachedJavaKeySetHashCode)
+      }
+    }
+  }
 }
 
 
@@ -770,34 +823,6 @@ private final class BitmapIndexedMapNode[K, +V](
     }
 
     this
-  }
-
-  def mergeTwoKeyValPairs[V1 >: V](key0: K, value0: V1, originalHash0: Int, keyHash0: Int, key1: K, value1: V1, originalHash1: Int, keyHash1: Int, shift: Int): MapNode[K, V1] = {
-    // assert(key0 != key1)
-
-    if (shift >= HashCodeLength) {
-      new HashCollisionMapNode[K, V1](originalHash0, keyHash0, Vector((key0, value0), (key1, value1)))
-    } else {
-      val mask0 = maskFrom(keyHash0, shift)
-      val mask1 = maskFrom(keyHash1, shift)
-      val newCachedHash = keyHash0 + keyHash1
-
-      if (mask0 != mask1) {
-        // unique prefixes, payload fits on same level
-        val dataMap = bitposFrom(mask0) | bitposFrom(mask1)
-
-        if (mask0 < mask1) {
-          new BitmapIndexedMapNode[K, V1](dataMap, 0, Array(key0, value0, key1, value1), Array(originalHash0, originalHash1), 2, newCachedHash)
-        } else {
-          new BitmapIndexedMapNode[K, V1](dataMap, 0, Array(key1, value1, key0, value0), Array(originalHash1, originalHash0), 2, newCachedHash)
-        }
-      } else {
-        // identical prefixes, payload must be disambiguated deeper in the trie
-        val nodeMap = bitposFrom(mask0)
-        val node = mergeTwoKeyValPairs(key0, value0, originalHash0, keyHash0, key1, value1, originalHash1, keyHash1, shift + BitPartitionSize)
-        new BitmapIndexedMapNode[K, V1](0, nodeMap, Array(node), Array(), node.size, node.cachedJavaKeySetHashCode)
-      }
-    }
   }
 
   def hasNodes: Boolean = nodeMap != 0
@@ -1318,7 +1343,7 @@ private final class BitmapIndexedMapNode[K, +V](
               val leftOriginalHash = getHash(leftDataIdx)
               val rightOriginalHash = bm.getHash(rightDataIdx)
 
-              bm.mergeTwoKeyValPairs(
+              MapNode.mergeTwoKeyValPairs(
                 getKey(leftDataIdx), getValue(leftDataIdx), leftOriginalHash, improve(leftOriginalHash),
                 bm.getKey(rightDataIdx), bm.getValue(rightDataIdx), rightOriginalHash, improve(rightOriginalHash),
                 nextShift
@@ -1848,18 +1873,38 @@ private[immutable] final class HashMapBuilder[K, V] extends ReusableBuilder[(K, 
   import Node._
   import MapNode._
 
-
   private def newEmptyRootNode = new BitmapIndexedMapNode[K, V](0, 0, Array(), Array(), 0, 0)
 
-  /** The last given out HashMap as a return value of `result()`, if any, otherwise null.
-    * Indicates that on next add, the elements should be copied to an identical structure, before continuing
-    * mutations. */
-  private var aliased: HashMap[K, V] = _
 
   private def isAliased: Boolean = aliased != null
 
-  /** The root node of the partially build hashmap */
+
+  /** The root node of the partially built hashmap.
+    *
+    * If this.isAliased, then this root node may NOT be completely mutated
+    * However, this.isShallowlyMutable, then this node may be mutated, and any
+    * 1-bits set in `shallowlyMutableNodeMap` represent bit-positions of immediate
+    * children of this node which may also be shallowly mutated. */
   private var rootNode: BitmapIndexedMapNode[K, V] = newEmptyRootNode
+
+  /** If we are aliasing a hashmap, and then more elements are added, then we can fall back to shallow mutations
+    * in subsequent additions.
+    *
+    * If we are not aliased at all, then we are technically shallowly mutable, though we are also entirely mutable as
+    * well.
+    */
+  private[this] var isShallowlyMutable: Boolean = true
+
+  /** If we are aliasing a hashmap, and then more elements are added, then we can fall back to shallow mutations
+    * in subsequent additions
+    *
+    * This is a bitmap which tracks which node childred immediately beneath rootNode are also available for mutation.
+    */
+  private[this] var shallowlyMutableNodeMap: Int = 0
+
+  /** The last given out HashMap as a return value of `result()`, if any, otherwise null.
+    * */
+  private[this] var aliased: HashMap[K, V] = _
 
   private[immutable] def getOrElse[V0 >: V](key: K, value: V0): V0 =
     if (rootNode.size == 0) value
@@ -1902,51 +1947,6 @@ private[immutable] final class HashMapBuilder[K, V] extends ReusableBuilder[(K, 
     bm.cachedJavaKeySetHashCode += keyHash
   }
 
-  /** Removes element at index `ix` from array `as`, shifting the trailing elements right */
-  private def removeElement(as: Array[Int], ix: Int): Array[Int] = {
-    if (ix < 0) throw new ArrayIndexOutOfBoundsException
-    if (ix > as.length - 1) throw new ArrayIndexOutOfBoundsException
-    val result = new Array[Int](as.length - 1)
-    arraycopy(as, 0, result, 0, ix)
-    arraycopy(as, ix + 1, result, ix, as.length - ix - 1)
-    result
-  }
-
-  /** Mutates `bm` to replace inline data at bit position `bitpos` with node `node` */
-  private def migrateFromInlineToNode(bm: BitmapIndexedMapNode[K, V], keyHash: Int, bitpos: Int, node: MapNode[K, V]): Unit = {
-    val dataIx = bm.dataIndex(bitpos)
-    val idxOld = TupleLength * dataIx
-    val idxNew = bm.content.length - TupleLength - bm.nodeIndex(bitpos)
-
-    val src = bm.content
-    val dst = new Array[Any](src.length - TupleLength + 1)
-
-    // copy 'src' and remove 2 element(s) at position 'idxOld' and
-    // insert 1 element(s) at position 'idxNew'
-    // assert(idxOld <= idxNew)
-    arraycopy(src, 0, dst, 0, idxOld)
-    arraycopy(src, idxOld + TupleLength, dst, idxOld, idxNew - idxOld)
-    dst(idxNew) = node
-    arraycopy(src, idxNew + TupleLength, dst, idxNew + 1, src.length - idxNew - TupleLength)
-
-    val dstHashes = removeElement(bm.originalHashes, dataIx)
-
-    bm.dataMap ^= bitpos
-    bm.nodeMap |= bitpos
-    bm.content = dst
-    bm.originalHashes = dstHashes
-    bm.size = bm.size - 1 + node.size
-    bm.cachedJavaKeySetHashCode += node.cachedJavaKeySetHashCode - keyHash
-  }
-
-  /** Mutates `bm` to replace inline data at bit position `bitpos` with updated key/value */
-  private def setValue[V1 >: V](bm: BitmapIndexedMapNode[K, V], bitpos: Int, newKey: K, newValue: V1): Unit = {
-    val dataIx = bm.dataIndex(bitpos)
-    val idx = TupleLength * dataIx
-    //bm.content(idx) = newKey
-    bm.content(idx + 1) = newValue
-  }
-
   /** Upserts a key/value pair into mapNode, mutably */
   private[immutable] def update(mapNode: MapNode[K, V], key: K, value: V, originalHash: Int, keyHash: Int, shift: Int): Unit = {
     mapNode match {
@@ -1955,19 +1955,22 @@ private[immutable] final class HashMapBuilder[K, V] extends ReusableBuilder[(K, 
         val bitpos = bitposFrom(mask)
         if ((bm.dataMap & bitpos) != 0) {
           val index = indexFrom(bm.dataMap, mask, bitpos)
-          val key0 = bm.getKey(index)
+          val key0 = bm.content(TupleLength * index).asInstanceOf[K]
           val key0UnimprovedHash = bm.getHash(index)
 
           if (key0UnimprovedHash == originalHash && key0 == key) {
-            setValue(bm, bitpos, key, value)
+            bm.content(TupleLength * index + 1) = value
           } else {
             val value0 = bm.getValue(index)
             val key0Hash = improve(key0UnimprovedHash)
 
             val subNodeNew: MapNode[K, V] =
-              bm.mergeTwoKeyValPairs(key0, value0, key0UnimprovedHash, key0Hash, key, value, originalHash, keyHash, shift + BitPartitionSize)
+              MapNode.mergeTwoKeyValPairs(
+                key0, value0, key0UnimprovedHash, key0Hash,
+                key, value, originalHash, keyHash,
+                shift + BitPartitionSize)
 
-            migrateFromInlineToNode(bm, key0Hash, bitpos, subNodeNew)
+            bm.migrateFromInlineToNodeInPlace(bitpos, key0Hash, subNodeNew)
           }
 
         } else if ((bm.nodeMap & bitpos) != 0) {
@@ -1991,59 +1994,107 @@ private[immutable] final class HashMapBuilder[K, V] extends ReusableBuilder[(K, 
     }
   }
 
-  /** If currently referencing aliased structure, copy elements to new mutable structure */
-  private def ensureUnaliased() = {
-    if (isAliased) copyElems()
-    aliased = null
-  }
-
-  /** Copy elements to new mutable structure */
-  private def copyElems(): Unit = {
-    rootNode = rootNode.copy()
-  }
-
   override def result(): HashMap[K, V] =
     if (rootNode.size == 0) {
       HashMap.empty
-    } else if (aliased != null) {
+    } else if (aliased == null || (rootNode ne aliased.rootNode)) {
+      aliased = new HashMap(rootNode)
+      isShallowlyMutable = false
+      shallowlyMutableNodeMap = 0
       aliased
     } else {
-      aliased = new HashMap(rootNode)
-      releaseFence()
+      //assert(rootNode eq aliased.rootNode)
       aliased
     }
 
-  override def addOne(elem: (K, V)): this.type = {
-    ensureUnaliased()
-    val h = elem._1.##
-    val im = improve(h)
-    update(rootNode, elem._1, elem._2, h, im, 0)
-    this
-  }
+
+  override def addOne(elem: (K, V)): this.type = addOne(elem._1, elem._2)
 
   def addOne(key: K, value: V): this.type = {
-    ensureUnaliased()
     val originalHash = key.##
-    update(rootNode, key, value, originalHash, improve(originalHash), 0)
+    val improvedHash = improve(originalHash)
+    if (isAliased) {
+      if (isShallowlyMutable) {
+        shallowlyMutableNodeMap =
+          rootNode.updateWithShallowMutations(key, value, originalHash, improvedHash, 0, shallowlyMutableNodeMap)
+      } else {
+        val newRootNode = rootNode.updated(key, value, originalHash, improvedHash, 0)
+        if (newRootNode ne rootNode) {
+          isShallowlyMutable = true
+        }
+        rootNode = newRootNode
+      }
+    } else {
+      update(rootNode, key, value, originalHash, improvedHash, 0)
+    }
     this
   }
 
-  override def addAll(xs: IterableOnce[(K, V)]) = {
-    ensureUnaliased()
+  override def addAll(xs: IterableOnce[(K, V)]): this.type = {
     xs match {
       case hm: HashMap[K, V] =>
-        new ChampBaseIterator[MapNode[K, V]](hm.rootNode) {
-          while(hasNext) {
-            val originalHash = currentValueNode.getHash(currentValueCursor)
-            update(
-              mapNode = rootNode,
-              key = currentValueNode.getKey(currentValueCursor),
-              value = currentValueNode.getValue(currentValueCursor),
-              originalHash = originalHash,
-              keyHash = improve(originalHash),
-              shift = 0
-            )
-            currentValueCursor += 1
+        if (isAliased) {
+          new ChampBaseIterator[MapNode[K, V]](hm.rootNode) {
+            if (isShallowlyMutable) {
+              while (hasNext) {
+                val originalHash = currentValueNode.getHash(currentValueCursor)
+                shallowlyMutableNodeMap =
+                  rootNode.updateWithShallowMutations(
+                  key = currentValueNode.getKey(currentValueCursor),
+                  value = currentValueNode.getValue(currentValueCursor),
+                  originalHash = originalHash,
+                  keyHash = improve(originalHash),
+                  shift = 0,
+                  shallowlyMutableNodeMap = shallowlyMutableNodeMap
+                )
+                currentValueCursor += 1
+              }
+            } else {
+
+              var current = rootNode
+              var finished = false
+
+              while (hasNext && !finished) {
+                val originalHash = currentValueNode.getHash(currentValueCursor)
+                current = current.updated(
+                  key = currentValueNode.getKey(currentValueCursor),
+                  value = currentValueNode.getValue(currentValueCursor),
+                  originalHash = originalHash,
+                  keyHash = improve(originalHash),
+                  shift = 0
+                )
+                currentValueCursor += 1
+
+                if (current ne rootNode) {
+                  isShallowlyMutable = true
+                  while (hasNext && !finished) {
+                    val key = currentValueNode.getKey(currentValueCursor)
+                    val value = currentValueNode.getValue(currentValueCursor)
+                    val originalHash = currentValueNode.getHash(currentValueCursor)
+                    val improved = improve(originalHash)
+                    shallowlyMutableNodeMap = current.updateWithShallowMutations(key, value, originalHash, improved, 0, shallowlyMutableNodeMap)
+                    currentValueCursor += 1
+                  }
+                  finished = true
+                  HashMapBuilder.this.rootNode = current
+                }
+              }
+            }
+          }
+        } else {
+          new ChampBaseIterator[MapNode[K, V]](hm.rootNode) {
+            while (hasNext) {
+              val originalHash = currentValueNode.getHash(currentValueCursor)
+              update(
+                mapNode = rootNode,
+                key = currentValueNode.getKey(currentValueCursor),
+                value = currentValueNode.getValue(currentValueCursor),
+                originalHash = originalHash,
+                keyHash = improve(originalHash),
+                shift = 0
+              )
+              currentValueCursor += 1
+            }
           }
         }
       case other =>
@@ -2056,6 +2107,8 @@ private[immutable] final class HashMapBuilder[K, V] extends ReusableBuilder[(K, 
 
   override def clear(): Unit = {
     aliased = null
+    shallowlyMutableNodeMap = 0
+    isShallowlyMutable = true
     if (rootNode.size > 0) {
       rootNode = newEmptyRootNode
     }

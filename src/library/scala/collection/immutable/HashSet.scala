@@ -1797,50 +1797,6 @@ private[collection] final class HashSetBuilder[A] extends ReusableBuilder[A, Has
     bm.cachedJavaKeySetHashCode += keyHash
   }
 
-  /** Removes element at index `ix` from array `as`, shifting the trailing elements right */
-  private def removeElement(as: Array[Int], ix: Int): Array[Int] = {
-    if (ix < 0) throw new ArrayIndexOutOfBoundsException
-    if (ix > as.length - 1) throw new ArrayIndexOutOfBoundsException
-    val result = new Array[Int](as.length - 1)
-    arraycopy(as, 0, result, 0, ix)
-    arraycopy(as, ix + 1, result, ix, as.length - ix - 1)
-    result
-  }
-
-  /** Mutates `bm` to replace inline data at bit position `bitpos` with node `node` */
-  private def migrateFromInlineToNode(bm: BitmapIndexedSetNode[A], elementHash: Int, bitpos: Int, node: SetNode[A]): Unit = {
-    val dataIx = bm.dataIndex(bitpos)
-    val idxOld = TupleLength * dataIx
-    val idxNew = bm.content.length - TupleLength - bm.nodeIndex(bitpos)
-
-    val src = bm.content
-    val dst = new Array[Any](src.length - TupleLength + 1)
-
-    // copy 'src' and remove 2 element(s) at position 'idxOld' and
-    // insert 1 element(s) at position 'idxNew'
-    // assert(idxOld <= idxNew)
-    arraycopy(src, 0, dst, 0, idxOld)
-    arraycopy(src, idxOld + TupleLength, dst, idxOld, idxNew - idxOld)
-    dst(idxNew) = node
-    arraycopy(src, idxNew + TupleLength, dst, idxNew + 1, src.length - idxNew - TupleLength)
-
-    val dstHashes = removeElement(bm.originalHashes, dataIx)
-
-    bm.dataMap ^= bitpos
-    bm.nodeMap |= bitpos
-    bm.content = dst
-    bm.originalHashes = dstHashes
-    bm.size = bm.size - 1 + node.size
-    bm.cachedJavaKeySetHashCode = bm.cachedJavaKeySetHashCode - elementHash + node.cachedJavaKeySetHashCode
-  }
-
-  /** Mutates `bm` to replace inline data at bit position `bitpos` with updated key/value */
-  private def setValue[A1 >: A](bm: BitmapIndexedSetNode[A], bitpos: Int, elem: A): Unit = {
-    val dataIx = bm.dataIndex(bitpos)
-    val idx = TupleLength * dataIx
-    bm.content(idx) = elem
-  }
-
   def update(setNode: SetNode[A], element: A, originalHash: Int, elementHash: Int, shift: Int): Unit =
     setNode match {
       case bm: BitmapIndexedSetNode[A] =>
@@ -1853,11 +1809,11 @@ private[collection] final class HashSetBuilder[A] extends ReusableBuilder[A, Has
           val element0UnimprovedHash = bm.getHash(index)
 
           if (element0UnimprovedHash == originalHash && element0 == element) {
-            setValue(bm, bitpos, element0)
+            bm.content(index) = element0
           } else {
             val element0Hash = improve(element0UnimprovedHash)
             val subNodeNew = bm.mergeTwoKeyValPairs(element0, element0UnimprovedHash, element0Hash, element, originalHash, elementHash, shift + BitPartitionSize)
-            migrateFromInlineToNode(bm, element0Hash, bitpos, subNodeNew)
+            bm.migrateFromInlineToNodeInPlace(bitpos, element0Hash, subNodeNew)
           }
         } else if ((bm.nodeMap & bitpos) != 0) {
           val index = indexFrom(bm.nodeMap, mask, bitpos)
