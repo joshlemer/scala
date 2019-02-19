@@ -39,13 +39,6 @@ trait BuildFrom[-From, -A, +C] extends Any {
 
 object BuildFrom extends BuildFromLowPriority1 {
 
-  /** Build the source collection type from a MapOps */
-  implicit def buildFromMapOps[CC[X, Y] <: Map[X, Y] with MapOps[X, Y, CC, _], K0, V0, K, V]: BuildFrom[CC[K0, V0], (K, V), CC[K, V]] = new BuildFrom[CC[K0, V0], (K, V), CC[K, V]] {
-    //TODO: Reuse a prototype instance
-    def newBuilder(from: CC[K0, V0]): Builder[(K, V), CC[K, V]] = from.mapFactory.newBuilder[K, V]
-    def fromSpecific(from: CC[K0, V0])(it: IterableOnce[(K, V)]): CC[K, V] = from.mapFactory.from(it)
-  }
-
   /** Build the source collection type from a SortedMapOps */
   implicit def buildFromSortedMapOps[CC[X, Y] <: SortedMap[X, Y] with SortedMapOps[X, Y, CC, _], K0, V0, K : Ordering, V]: BuildFrom[CC[K0, V0], (K, V), CC[K, V]] = new BuildFrom[CC[K0, V0], (K, V), CC[K, V]] {
     def newBuilder(from: CC[K0, V0]): Builder[(K, V), CC[K, V]] = from.sortedMapFactory.newBuilder[K, V]
@@ -85,6 +78,13 @@ object BuildFrom extends BuildFromLowPriority1 {
 }
 
 trait BuildFromLowPriority1 extends BuildFromLowPriority2 {
+
+  /** Build the source collection type from a MapOps */
+  implicit def buildFromMapOps[CC[X, Y] <: Map[X, Y] with MapOps[X, Y, CC, _], K0, V0, K, V]: BuildFrom[CC[K0, V0], (K, V), CC[K, V]] = new BuildFrom[CC[K0, V0], (K, V), CC[K, V]] {
+    //TODO: Reuse a prototype instance
+    def newBuilder(from: CC[K0, V0]): Builder[(K, V), CC[K, V]] = from.mapFactory.newBuilder[K, V]
+    def fromSpecific(from: CC[K0, V0])(it: IterableOnce[(K, V)]): CC[K, V] = from.mapFactory.from(it)
+  }
 
   /** Build the source collection type from an Iterable with SortedOps */
   implicit def buildFromSortedSetOps[CC[X] <: SortedSet[X] with SortedSetOps[X, CC, _], A0, A : Ordering]: BuildFrom[CC[A0], A, CC[A]] = new BuildFrom[CC[A0], A, CC[A]] {
