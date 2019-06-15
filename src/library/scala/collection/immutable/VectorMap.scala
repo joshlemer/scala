@@ -76,9 +76,7 @@ final class VectorMap[K, +V] private (
     case None    => None
   }
 
-  def iterator: Iterator[(K, V)] = fields.iterator.collect {
-    case entry if entry != null => (entry.key, entry.value)
-  }
+  def iterator: Iterator[(K, V)] = fields.iterator.collect { case entry if entry != null => entry.toTuple }
 
   // No-Op overrides to allow for more efficient steppers in a minor release.
   // Refining the return type to `S with EfficientSplit` is binary compatible.
@@ -158,6 +156,9 @@ final class VectorMap[K, +V] private (
   override def values: Iterable[V] = new Iterable[V] with IterableFactoryDefaults[V, Iterable] {
     override def iterator: Iterator[V] = fields.iterator.collect { case e if e != null => e.value }
   }
+
+//  override def iterator: Iterator[(K, V)] = fields.iterator.collect { case e if e != null => e.toTuple }
+
 }
 
 object VectorMap extends MapFactory[VectorMap] {
