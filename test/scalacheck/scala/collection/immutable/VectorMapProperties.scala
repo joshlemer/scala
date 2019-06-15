@@ -15,7 +15,7 @@ object VectorMapProperties extends Properties("immutable.VectorMap") {
     !m.isEmpty ==> {
       val vm = VectorMap.from(m)
       val last = vm.keys.last
-      vm.fields(vm.underlying(last)._1) == last
+      vm.fields(vm.underlying(last)).key == last
     }
   }
 
@@ -31,10 +31,9 @@ object VectorMapProperties extends Properties("immutable.VectorMap") {
       val random = v(new scala.util.Random().nextInt(v.size))
       val vm = VectorMap.from(v)
       val removed = vm - random._1
-      removed.underlying.forall { case (k, (s, v)) => removed.fields(s) == k }
+      removed.underlying.forall { case (k, s) => removed.fields(s).key == k }
       removed.fields.zipWithIndex.forall {
-        case (k: K, s) => removed.underlying(k)._1 == s
-        case _ => true
+        case (e, s) => e == null || removed.underlying(e.key) == s
       }
     }
   }

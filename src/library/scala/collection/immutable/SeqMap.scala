@@ -185,14 +185,20 @@ object SeqMap extends MapFactory[SeqMap] {
       else if (key == key4) new SeqMap4(key1, value1, key2, value2, key3, value3, key4, value)
       else {
         // Directly create the elements for performance reasons
-        val fields = Vector(key1, key2, key3, key4, key)
-        val underlying: Map[K, (Int, V1)] =
+        val fields = Vector(
+          new VectorMap.Entry(key1, value1),
+          new VectorMap.Entry(key2, value2),
+          new VectorMap.Entry(key3, value3),
+          new VectorMap.Entry(key4, value4),
+          new VectorMap.Entry(key, value)
+        )
+        val underlying: Map[K, Int] =
           HashMap(
-            (key1, (0, value1)),
-            (key2, (1, value2)),
-            (key3, (2, value3)),
-            (key4, (3, value4)),
-            (key, (4, value))
+            (key1, 0),
+            (key2, 1),
+            (key3, 2),
+            (key4, 3),
+            (key, 4)
           )
         new VectorMap(fields, underlying)
       }
