@@ -11,6 +11,18 @@ import scala.collection.mutable.ListBuffer
 class VectorTest {
 
   @Test
+  def foo(): Unit = {
+    val v = new VectorBuilder[String]
+
+    v.addAll((1 to 100).map(_.toString))
+
+    println(v(0))
+    println(v(1))
+    println(v(2))
+    println(v(3))
+  }
+
+  @Test
   def hasCorrectDropAndTakeMethods(): Unit = {
     val v = Vector(0) ++ Vector(1 to 64: _*)
 

@@ -9,10 +9,10 @@ import java.util.concurrent.TimeUnit
 import scala.util.Random
 
 @BenchmarkMode(Array(Mode.AverageTime))
-@Fork(2)
+@Fork(1)
 @Threads(1)
-@Warmup(iterations = 10)
-@Measurement(iterations = 10)
+@Warmup(iterations = 7)
+@Measurement(iterations = 7)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @State(Scope.Benchmark)
 class VectorMapBenchmark {
@@ -31,26 +31,26 @@ class VectorMapBenchmark {
     vmap = VectorMap.from(kvs)
   }
 
-  @Benchmark
-  def builder(bh: Blackhole): Unit = {
-    val b = VectorMap.newBuilder[Int, Int]
-    bh.consume(b.addAll(kvs).result())
-  }
+//  @Benchmark
+//  def builder(bh: Blackhole): Unit = {
+//    val b = VectorMap.newBuilder[Int, Int]
+//    bh.consume(b.addAll(kvs).result())
+//  }
 
   @Benchmark
   def apply(bh: Blackhole): Unit = {
     bh.consume(vmap(key))
   }
-  @Benchmark
-  def updated(bh: Blackhole): Unit = {
-    bh.consume(vmap.updated(key, key + 1))
-  }
-  @Benchmark
-  def removed(bh: Blackhole): Unit = {
-    bh.consume(vmap.removed(key))
-  }
-  @Benchmark
-  def foreach(bh: Blackhole): Unit = {
-    vmap.foreach { case (k, v) => bh.consume(k); bh.consume(v)}
-  }
+//  @Benchmark
+//  def updated(bh: Blackhole): Unit = {
+//    bh.consume(vmap.updated(key, key + 1))
+//  }
+//  @Benchmark
+//  def removed(bh: Blackhole): Unit = {
+//    bh.consume(vmap.removed(key))
+//  }
+//  @Benchmark
+//  def foreach(bh: Blackhole): Unit = {
+//    vmap.foreach { case (k, v) => bh.consume(k); bh.consume(v)}
+//  }
 }

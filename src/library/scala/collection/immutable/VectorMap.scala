@@ -32,7 +32,8 @@ import scala.collection.immutable.VectorMap.Entry
   */
 final class VectorMap[K, +V] private (
     private[immutable] val fields: Vector[Entry[K, V]],
-     private[immutable] val underlying: Map[K, Int], dummy: Boolean)
+     private[immutable] val underlying: Map[K, Int],
+    dummy: Boolean)
   extends AbstractMap[K, V]
     with SeqMap[K, V]
     with StrictOptimizedMapOps[K, V, VectorMap, VectorMap[K, V]]
@@ -75,6 +76,8 @@ final class VectorMap[K, +V] private (
     case Some(e) => Some(fields(e).value)
     case None    => None
   }
+
+  override def apply(key: K): V = fields(underlying(key)).value
 
   def iterator: Iterator[(K, V)] = fields.iterator.collect { case entry if entry != null => entry.toTuple }
 
@@ -157,7 +160,7 @@ final class VectorMap[K, +V] private (
     override def iterator: Iterator[V] = fields.iterator.collect { case e if e != null => e.value }
   }
 
-//  override def iterator: Iterator[(K, V)] = fields.iterator.collect { case e if e != null => e.toTuple }
+  override def foreachEntry[U](f: (K, V) => U): Unit = fields.foreach{e => if (e != null) f(e.key, e.value) }
 
 }
 
@@ -183,7 +186,7 @@ object VectorMap extends MapFactory[VectorMap] {
 
 private[immutable] final class VectorMapBuilder[K, V] extends mutable.Builder[(K, V), VectorMap[K, V]] {
   private[this] val vectorBuilder = new VectorBuilder[Entry[K, V]]
-  private[this] val mapBuilder = new MapBuilderImpl[K, Int]
+  private[this] val mapBuilder = new HashMapBuilder[K, Int]
   private[this] var aliased: VectorMap[K, V] = _
 
   override def clear(): Unit = {
@@ -198,21 +201,43 @@ private[immutable] final class VectorMapBuilder[K, V] extends mutable.Builder[(K
     }
     aliased
   }
-  def addOne(key: K, value: V): this.type = {
-    if (aliased ne null) {
-      aliased = aliased.updated(key, value)
+
+  private def _addOne(key: K, value: V): this.type = {
+    val originalHash = key.##
+    val improved = Hashing.improve(originalHash)
+    val slot = mapBuilder.getOrElse(key, originalHash, improved, -1)
+    if (slot == -1) {
+      val vectorSize = vectorBuilder.size
+      vectorBuilder.addOne(new Entry(key, value))
+      mapBuilder.addOne(key, vectorSize, originalHash, improved)
     } else {
-      mapBuilder.getOrElse(key, -1) match {
-        case -1 =>
-          val vectorSize = vectorBuilder.size
-          vectorBuilder.addOne(new Entry(key, value))
-          mapBuilder.addOne(key, vectorSize)
-        case slot =>
-          vectorBuilder(slot).value = value
-      }
+      vectorBuilder(slot).value = value
     }
     this
   }
 
+  def addOne(key: K, value: V): this.type = {
+    if (aliased ne null) {
+      aliased = aliased.updated(key, value)
+    } else {
+      _addOne(key, value)
+    }
+    this
+  }
+
+
   override def addOne(elem: (K, V)): this.type = addOne(elem._1, elem._2)
+
+  override def addAll(xs: IterableOnce[(K, V)]): this.type = {
+    if (aliased ne null) {
+      aliased = aliased.concat(xs)
+    } else {
+      val iter = xs.iterator
+      while(iter.hasNext) {
+        val (k, v) = iter.next()
+        _addOne(k, v)
+      }
+    }
+    this
+  }
 }

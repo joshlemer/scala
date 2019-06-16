@@ -865,34 +865,38 @@ final class VectorBuilder[A]() extends ReusableBuilder[A, Vector[A]] with Vector
 
   override def knownSize: Int = size
 
-  private[collection] def apply(index: Int): A = {
-    require(index >= 0 && index < size)
-    if (index < (1 << 5)) { // level = 0
+  private[collection] def apply(i: Int): A = {
+//    require(index >= 0 && index < size)
+
+    val index = i + startIndex
+    val xor = index ^ (blockIndex + lo - 1)
+
+    if (xor < (1 << 5)) { // level = 0
       (display0
       (index & 31).asInstanceOf[A])
-    } else if (index < (1 << 10)) { // level = 1
+    } else if (xor < (1 << 10)) { // level = 1
       (display1
       ((index >>> 5) & 31)
       (index & 31).asInstanceOf[A])
-    } else if (index < (1 << 15)) { // level = 2
+    } else if (xor < (1 << 15)) { // level = 2
       (display2
       ((index >>> 10) & 31)
       ((index >>> 5) & 31)
       (index & 31).asInstanceOf[A])
-    } else if (index < (1 << 20)) { // level = 3
+    } else if (xor < (1 << 20)) { // level = 3
       (display3
       ((index >>> 15) & 31)
       ((index >>> 10) & 31)
       ((index >>> 5) & 31)
       (index & 31).asInstanceOf[A])
-    } else if (index < (1 << 25)) { // level = 4
+    } else if (xor < (1 << 25)) { // level = 4
       (display4
       ((index >>> 20) & 31)
       ((index >>> 15) & 31)
       ((index >>> 10) & 31)
       ((index >>> 5) & 31)
       (index & 31).asInstanceOf[A])
-    } else if (index < (1 << 30)) { // level = 5
+    } else if (xor < (1 << 30)) { // level = 5
       (display5
       ((index >>> 25) & 31)
       ((index >>> 20) & 31)

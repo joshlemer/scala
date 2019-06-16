@@ -2136,6 +2136,10 @@ private[immutable] final class HashMapBuilder[K, V] extends ReusableBuilder[(K, 
   /** The root node of the partially build hashmap */
   private var rootNode: BitmapIndexedMapNode[K, V] = newEmptyRootNode
 
+  private[immutable] def getOrElse[V0 >: V](key: K, originalHash: Int, hash: Int, value: V0): V0 =
+    if (rootNode.size == 0) value
+    else rootNode.getOrElse(key, originalHash, hash, 0, value)
+
   private[immutable] def getOrElse[V0 >: V](key: K, value: V0): V0 =
     if (rootNode.size == 0) value
     else {
