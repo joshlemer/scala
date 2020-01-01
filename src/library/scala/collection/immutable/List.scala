@@ -615,7 +615,21 @@ object List extends StrictOptimizedSeqFactory[List] {
     case coll: List[B] => coll
     case _ if coll.knownSize == 0 => empty[B]
     case b: ListBuffer[B] => b.toList
-    case _ => ListBuffer.from(coll).toList
+    case _ =>
+      val iter = coll.iterator
+      if (iter.hasNext) {
+        val head = new ::[B](iter.next(), Nil)
+        var curr = head
+        while (iter.hasNext) {
+          val temp = new ::[B](iter.next(), Nil)
+          curr.next = temp
+          curr = temp
+        }
+        releaseFence()
+        head
+      } else {
+        Nil
+      }
   }
 
   def newBuilder[A]: Builder[A, List[A]] = new ListBuffer()
