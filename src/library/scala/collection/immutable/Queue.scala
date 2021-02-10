@@ -36,7 +36,7 @@ import scala.collection.mutable.{Builder, ListBuffer}
   *  @define willNotTerminateInf
   */
 
-sealed class Queue[+A] protected(protected val in: List[A], protected val out: List[A])
+sealed class Queue[+A] protected(protected val in: List[Any /* A | Many[A] */], protected val out: List[A])
   extends AbstractSeq[A]
     with LinearSeq[A]
     with LinearSeqOps[A, Queue, Queue[A]]
@@ -44,6 +44,61 @@ sealed class Queue[+A] protected(protected val in: List[A], protected val out: L
     with StrictOptimizedSeqOps[A, Queue, Queue[A]]
     with IterableFactoryDefaults[A, Queue]
     with DefaultSerializable {
+
+  private def inLength(): Int = {
+    var result = 0
+    var curr = in
+
+    while (curr.nonEmpty) {
+      in.head match {
+        case m: Queue.Many[_] =>
+          result += m.underlying.length
+        case _                =>
+          result += 1
+      }
+      curr = curr.tail
+    }
+    result
+  }
+
+  private def inApply(n: Int, originalN: Int): A = {
+    def indexOutOfRange(): Nothing = throw new IndexOutOfBoundsException(originalN.toString)
+    var curr = in
+    var remaining = n
+    while (curr.nonEmpty) {
+      in.head match {
+        case m: Queue.Many[_] =>
+          val mLen = m.underlying.length
+          if (mLen <= remaining) {
+            remaining -= mLen
+          } else {
+            return m.underlying.apply(mLen - remaining - 1).asInstanceOf[A]
+          }
+        case other =>
+          if (remaining == 0) {
+            return other.asInstanceOf[A]
+          }
+          remaining -= 1
+      }
+      curr = curr.tail
+    }
+    ???
+  }
+
+  private def inToOut(): List[A] = {
+    var curr = in
+    val lb = ListBuffer[A]()
+    while (curr.nonEmpty) {
+      curr.head match {
+        case m: Queue.Many[A] =>
+          lb.prependAll(m.underlying.asInstanceOf[Seq[A]])
+        case other =>
+          lb.prepend(other.asInstanceOf[A])
+      }
+      curr = curr.tail
+    }
+    lb.result()
+  }
 
   override def iterableFactory: SeqFactory[Queue] = Queue
 
@@ -67,19 +122,29 @@ sealed class Queue[+A] protected(protected val in: List[A], protected val out: L
 
     if (index == n) {
       if (curr.nonEmpty) curr.head
-      else if (in.nonEmpty) in.last
+      else if (in.nonEmpty) {
+        in.last match {
+          case many: Queue.Many[A] =>
+            many.underlying.last
+          case other =>
+            other.asInstanceOf[A]
+        }
+      }
       else indexOutOfRange()
     } else {
       val indexFromBack = n - index
-      val inLength = in.length
-      if (indexFromBack >= inLength) indexOutOfRange()
-      else in(inLength - indexFromBack - 1)
+      val _inLength = inLength()
+      if (indexFromBack >= _inLength) indexOutOfRange()
+      else inApply(_inLength - indexFromBack - 1, n)
     }
   }
 
   /** Returns the elements in the list as an iterator
     */
-  override def iterator: Iterator[A] = out.iterator.concat(in.reverse)
+  override def iterator: Iterator[A] = out.iterator.concat(in.reverseIterator.flatMap {
+    case m: Queue.Many[A] => m.underlying.iterator
+    case a: A => Iterator.single(a)
+  })
 
   /** Checks if the queue is empty.
     *
@@ -89,21 +154,38 @@ sealed class Queue[+A] protected(protected val in: List[A], protected val out: L
 
   override def head: A =
     if (out.nonEmpty) out.head
-    else if (in.nonEmpty) in.last
+    else if (in.nonEmpty) in.last match {
+      case m: Queue.Many[_] =>
+        m.underlying.last.asInstanceOf[A]
+      case other =>
+        other.asInstanceOf[A]
+    }
     else throw new NoSuchElementException("head on empty queue")
 
   override def tail: Queue[A] =
     if (out.nonEmpty) new Queue(in, out.tail)
-    else if (in.nonEmpty) new Queue(Nil, in.reverse.tail)
+    else if (in.nonEmpty) {
+      new Queue(Nil, inToOut().tail)
+    }
     else throw new NoSuchElementException("tail on empty queue")
 
   /* This is made to avoid inefficient implementation of iterator. */
   override def forall(p: A => Boolean): Boolean =
-    in.forall(p) && out.forall(p)
+    in.forall {
+      case m: Queue.Many[_] =>
+        m.underlying.asInstanceOf[Seq[A]].forall(p)
+      case other =>
+        p(other.asInstanceOf[A])
+    } && out.forall(p)
 
   /* This is made to avoid inefficient implementation of iterator. */
   override def exists(p: A => Boolean): Boolean =
-    in.exists(p) || out.exists(p)
+    in.exists{
+      case m: Queue.Many[A] =>
+        m.underlying.asInstanceOf[Seq[A]].exists(p)
+      case other =>
+        p(other.asInstanceOf[A])
+    } || out.exists(p)
 
   override protected[this] def className = "Queue"
 
@@ -115,18 +197,25 @@ sealed class Queue[+A] protected(protected val in: List[A], protected val out: L
   override def appended[B >: A](elem: B): Queue[B] = enqueue(elem)
 
   override def appendedAll[B >: A](that: scala.collection.IterableOnce[B]): Queue[B] = {
-    val newIn = that match {
-      case that: Queue[B] => that.in ++ (that.out reverse_::: this.in)
-      case that: List[A] => that reverse_::: this.in
-      case _ =>
-        var result: List[B] = this.in
-        val iter = that.iterator
-        while (iter.hasNext) {
-          result = iter.next() :: result
-        }
-        result
+    if (this.isEmpty) {
+      Queue.from(that)
+    } else {
+      val newIn = that match {
+        case that: Queue[B] => that.in ++ (that.out reverse_::: this.in)
+        case head :: Nil =>
+          head :: this.in
+        case that: Seq[A] if that.isInstanceOf[List[A]] || that.isInstanceOf[Vector[A]] || that.isInstanceOf[ArraySeq[A]] =>
+          if (that.isEmpty) this.in else new Queue.Many(that) :: this.in
+        case _ =>
+          var result: List[Any] = this.in
+          val iter = that.iterator
+          while (iter.hasNext) {
+            result = iter.next() :: result
+          }
+          result
+      }
+      if (newIn eq this.in) this else new Queue[B](newIn, this.out)
     }
-    if (newIn eq this.in) this else new Queue[B](newIn, this.out)
   }
 
   /** Creates a new queue with element added at the end
@@ -164,7 +253,9 @@ sealed class Queue[+A] protected(protected val in: List[A], protected val out: L
     *  @return the first element of the queue.
     */
   def dequeue: (A, Queue[A]) = out match {
-    case Nil if !in.isEmpty => val rev = in.reverse ; (rev.head, new Queue(Nil, rev.tail))
+    case Nil if !in.isEmpty =>
+      val rev = inToOut() ;
+      (rev.head, new Queue(Nil, rev.tail))
     case x :: xs            => (x, new Queue(in, xs))
     case _                  => throw new NoSuchElementException("dequeue on empty queue")
   }
@@ -209,4 +300,6 @@ object Queue extends StrictOptimizedSeqFactory[Queue] {
   override def apply[A](xs: A*): Queue[A] = new Queue[A](Nil, xs.toList)
 
   private object EmptyQueue extends Queue[Nothing](Nil, Nil) { }
+
+  private final class Many[+A](val underlying: Seq[A] /* List[A] | Vector[A] | ArraySeq[A] */)
 }
